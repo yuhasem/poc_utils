@@ -6,7 +6,6 @@ Created on Sat Aug  3 14:53:22 2019
 """
 
 import csv
-import math
 
 class Range():
     
@@ -83,7 +82,7 @@ class ExperienceCalculator():
 #            print(slot[1])
             slot_sum = 0
             for level in slot[1].nums():
-                exp = self._ExperiencePerPokemon(slot[0], level)
+                exp = self.ExperiencePerPokemon(slot[0], level)
 #                print(exp)
                 slot_sum += exp
             slot_avg = float(slot_sum) / len(slot[1])
@@ -101,12 +100,12 @@ class ExperienceCalculator():
             route_sum += slot_avgs[i] * probs[i]
         return route_sum
     
-    def _ExperiencePerPokemon(self, pokemon, level):
+    def ExperiencePerPokemon(self, pokemon, level):
         base = self.experience[pokemon]
-        return base * level / 7
+        return base * level // 7
 
 def main():
-    calc = ExperienceCalculator('pokemon_exp.csv', 'pokemon_sapphire_encounters_land.csv')
+    calc = ExperienceCalculator('pokemon_exp.csv', 'pokemon_firered_encounters_land.csv')
 #    print(calc.experience)
 #    for route in calc.Routes():
 #        average_exp = calc.ExperienceForRoute(route)
