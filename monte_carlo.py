@@ -19,7 +19,7 @@ flags.DEFINE_integer('search_every_upper', 1, 'When search_every_lower and searc
 flags.DEFINE_integer('party_size', None, 'How many Pickup pokemon in the party to simulate', lower_bound=1)
 flags.DEFINE_integer('party_size_lower', 5, 'How many Pickup pokemon in the party to simulate', lower_bound=1)
 flags.DEFINE_integer('party_size_upper', 5, 'How many Pickup pokemon in the party to simulate', lower_bound=1)
-flags.DEFINE_enum('game', 'sapphire', ['sapphire', 'fire_red'], 'Which game configuration to run the simulation in')
+flags.DEFINE_enum('game', 'sapphire', ['ruby', 'sapphire', 'fire_red', 'leaf_green'], 'Which game configuration to run the simulation in')
 
 PICKUP_CONFIG = {
   'sapphire': [
@@ -53,6 +53,10 @@ PICKUP_CONFIG = {
     (1, 'Watmel Berry'),
   ]
 }
+
+# Aliases
+PICKUP_CONFIG['ruby'] = PICKUP_CONFIG['sapphire']
+PICKUP_CONFIG['leaf_green'] = PICKUP_CONFIG['leaf_green']
 
 class Pickup():
     
