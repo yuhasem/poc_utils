@@ -5,7 +5,16 @@ Created on Sat Aug  3 14:53:22 2019
 @author: yuhasem
 """
 
+from absl import app
+from absl import flags
+
 import csv
+
+FLAGS = flags.FLAGS
+
+flags.DEFINE_string('experience_file', 'pokemon_exp.csv', 'Filename to read base pokemon experience from')
+flags.DEFINE_string('encounters_file', 'pokemon_firered_encounters_land.csv', 'Filename to read encounter slots from')
+flags.DEFINE_string('output_file', 'average_exp.csv', 'Filename to write tabular output to')
 
 class Range():
     
@@ -20,7 +29,7 @@ class Range():
         return self.maxi - self.mini + 1
         
     def nums(self):
-        return [i for i in range(self.mini, self.maxi+1)]
+        return range(self.mini, self.maxi+1)
 
 class ExperienceCalculator():
     
@@ -75,15 +84,11 @@ class ExperienceCalculator():
         
     def ExperienceForRoute(self, route):
         slots = self.encounterSlots[route]
-#        print(len(slots))
         slot_avgs = list()
         for slot in slots:
-#            print(slot[0])
-#            print(slot[1])
             slot_sum = 0
             for level in slot[1].nums():
                 exp = self.ExperiencePerPokemon(slot[0], level)
-#                print(exp)
                 slot_sum += exp
             slot_avg = float(slot_sum) / len(slot[1])
             slot_avgs.append(slot_avg)
@@ -104,19 +109,16 @@ class ExperienceCalculator():
         base = self.experience[pokemon]
         return base * level // 7
 
-def main():
-    calc = ExperienceCalculator('pokemon_exp.csv', 'pokemon_firered_encounters_land.csv')
-#    print(calc.experience)
-#    for route in calc.Routes():
-#        average_exp = calc.ExperienceForRoute(route)
-#        print(route + ' -> ' + str(average_exp))
+def main(argv):
+    del argv  # Unused
+    calc = ExperienceCalculator(FLAGS.experience_file, FLAGS.encounters_file)
     avgs = [(calc.ExperienceForRoute(route), route) for route in calc.Routes()]
     avgs.sort(reverse=True)
     print(avgs)
-    f = open('average_expereince.csv', 'w', newline='')
+    f = open(FLAGS.output_file, 'w', newline='')
     w = csv.writer(f)
     for avg in avgs:
         w.writerow(avg)
 
 if __name__ == '__main__':
-    main()
+    app.run(main)
