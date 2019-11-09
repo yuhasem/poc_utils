@@ -56,7 +56,7 @@ PICKUP_CONFIG = {
 
 # Aliases
 PICKUP_CONFIG['ruby'] = PICKUP_CONFIG['sapphire']
-PICKUP_CONFIG['leaf_green'] = PICKUP_CONFIG['leaf_green']
+PICKUP_CONFIG['leaf_green'] = PICKUP_CONFIG['fire_red']
 
 class Pickup():
     
