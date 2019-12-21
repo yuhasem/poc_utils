@@ -20,7 +20,7 @@ flags.DEFINE_integer('search_every_upper', 1, 'When search_every_lower and searc
 flags.DEFINE_integer('party_size', None, 'How many Pickup pokemon in the party to simulate', lower_bound=1, upper_bound=6)
 flags.DEFINE_integer('party_size_lower', 5, 'How many Pickup pokemon in the party to simulate, loop through all possible values and report the results of the simulation for each.', lower_bound=1, upper_bound=6)
 flags.DEFINE_integer('party_size_upper', 5, 'How many Pickup pokemon in the party to simulate, loop through all possible values and report the results of the simulation for each.', lower_bound=1, upper_bound=6)
-flags.DEFINE_enum('game', 'sapphire', ['ruby', 'sapphire', 'fire_red', 'leaf_green', 'emerald'], 'Which game configuration to run the simulation in')
+flags.DEFINE_enum('game', 'sapphire', ['ruby', 'sapphire', 'fire_red', 'leaf_green', 'emerald', 'diamond', 'pearl', 'platinum', 'heart_gold', 'soul_silver', 'black', 'white', 'black2', 'white2', 'x', 'y', 'omega_ruby', 'alpha_sapphire'], 'Which game configuration to run the simulation in')
 flags.DEFINE_list('levels', [1], 'Levels of the pokemon in your party. Entries beyond on the party size are ignored. Last entry will be repeated if less than party size')
 
 class Pickup():
@@ -95,6 +95,7 @@ def main(argv):
     while len(levels) < 6:
         levels.append(levels[-1])
     print("Using game: ", FLAGS.game)
+    print("With levels: ", levels)
     print("Battles in each simulation: ", FLAGS.battles)
     seperator = "+------------+--------------+--------------+-------+"
     print(seperator)
