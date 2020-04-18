@@ -17,6 +17,17 @@ flags.DEFINE_string('encounters_file', 'pokemon_firered_encounters_land.csv', 'F
 flags.DEFINE_string('output_file', 'average_exp.csv', 'Filename to write tabular output to')
 flags.DEFINE_bool('vital_spirit', False, 'Calculate experience as if lead Pokemon had ability Vital Spirit/Hustle/Pressure.')
 flags.DEFINE_enum('generation', '4-', ['4-', '5+'], 'Generation of Vital Spirit/Hustle/Pressure mechanics to use. Only used when --vital_spirit is set.')
+flags.DEFINE_enum('style', 'land', ['land', 'surf', 'or', 'gr', 'sr', 'rs', 'dive'], 'Type of encounter to get odds for. If the program can guess the style based on the number of slots in the route, this will be overriden.')
+
+STYLE_TO_ODDS = {
+  'land': [0.2, 0.2, 0.1, 0.1, 0.1, 0.1, 0.05, 0.05, 0.04, 0.04, 0.01, 0.01],
+  'surf': [0.6, 0.3, 0.05, 0.04, 0.01],
+  'or': [0.7, 0.3],
+  'gr': [0.6, 0.2, 0.2],
+  'sr': [0.4, 0.4, 0.15, 0.04, 0.01],
+}
+STYLE_TO_ODDS['rs'] = STYLE_TO_ODDS['or']
+STYLE_TO_ODDS['dive'] = STYLE_TO_ODDS['surf']
 
 class Range():
     
@@ -103,11 +114,13 @@ class ExperienceCalculator():
                 slot_avg = float(slot_avg + self.ExperiencePerPokemon(slot[0], slot[1].maxLevel())) / 2
             slot_avgs.append(slot_avg)
         if len(slot_avgs) == 12:
-            probs = [0.2, 0.2, 0.1, 0.1, 0.1, 0.1, 0.05, 0.05, 0.04, 0.04, 0.01, 0.01]
+            probs = STYLE_TO_ODDS['land']
         elif len(slot_avgs) == 5:
-            probs = [0.6, 0.3, 0.05, 0.04, 0.01]
+            probs = STYLE_TO_ODDS[FLAGS.style]
+        elif len(slot_avgs) == 3:
+            probs = STYLE_TO_ODDS['gr']
         elif len(slot_avgs) == 2:
-            probs = [0.7, 0.3]
+            probs = STYLE_TO_ODDS['or']
         else:
             return 0
         if (FLAGS.vital_spirit and FLAGS.generation == '5+'):
@@ -127,7 +140,6 @@ class ExperienceCalculator():
                             maxIndex = j
                     probs[i] /= 2
                     probs[maxIndex] += probs[i]
-        print(route, probs)
         route_sum = 0
         for i in range(len(probs)):
             route_sum += slot_avgs[i] * probs[i]
