@@ -15,6 +15,8 @@ FLAGS = flags.FLAGS
 flags.DEFINE_string('experience_file', 'pokemon_exp.csv', 'Filename to read base pokemon experience from')
 flags.DEFINE_string('encounters_file', 'pokemon_firered_encounters_land.csv', 'Filename to read encounter slots from')
 flags.DEFINE_string('output_file', 'average_exp.csv', 'Filename to write tabular output to')
+flags.DEFINE_bool('vital_spirit', False, 'Calculate experience as if lead Pokemon had ability Vital Spirit/Hustle/Pressure.')
+flags.DEFINE_enum('generation', '4-', ['4-', '5+'], 'Generation of Vital Spirit/Hustle/Pressure mechanics to use. Only used when --vital_spirit is set.')
 
 class Range():
     
@@ -30,6 +32,9 @@ class Range():
         
     def nums(self):
         return range(self.mini, self.maxi+1)
+    
+    def maxLevel(self):
+        return self.maxi
 
 class ExperienceCalculator():
     
@@ -63,7 +68,7 @@ class ExperienceCalculator():
                 times = 0
             slots = list()
             for i in range(1, len(row), 2):
-                name = row[i]
+                name = row[i].upper().strip()
                 row[i+1] = row[i+1].strip()
                 try:
                     row[i+1].index('-')
@@ -91,6 +96,11 @@ class ExperienceCalculator():
                 exp = self.ExperiencePerPokemon(slot[0], level)
                 slot_sum += exp
             slot_avg = float(slot_sum) / len(slot[1])
+            if (FLAGS.vital_spirit and len(slot[1]) != 1):
+                # In all generations, Vital Spirit interacts with Range slots
+                # in the same way. There is a 50% chance to overwirte the level
+                # to the highest level within that slot.
+                slot_avg = float(slot_avg + self.ExperiencePerPokemon(slot[0], slot[1].maxLevel())) / 2
             slot_avgs.append(slot_avg)
         if len(slot_avgs) == 12:
             probs = [0.2, 0.2, 0.1, 0.1, 0.1, 0.1, 0.05, 0.05, 0.04, 0.04, 0.01, 0.01]
@@ -100,6 +110,24 @@ class ExperienceCalculator():
             probs = [0.7, 0.3]
         else:
             return 0
+        if (FLAGS.vital_spirit and FLAGS.generation == '5+'):
+            # In generation 5, Vital Spirit has a 50% chance to change an
+            # encounter to the highest level for the species on that route.
+            # This is equivalent to a non-trivial re-writing of the probs
+            # for that route, but ONLY for non-range (land) routes.
+            print("rewriting probs on route", route)
+            if len(slots[0][1]) == 1:
+                for i in range(len(slots)):
+                    name = slots[i][0]
+                    maxLevel = 0
+                    maxIndex = i
+                    for j in range(len(slots)):
+                        if slots[j][0] == name and slots[j][1].maxLevel() >= maxLevel:
+                            maxLevel = slots[j][1].maxLevel()
+                            maxIndex = j
+                    probs[i] /= 2
+                    probs[maxIndex] += probs[i]
+        print(route, probs)
         route_sum = 0
         for i in range(len(probs)):
             route_sum += slot_avgs[i] * probs[i]
@@ -111,6 +139,8 @@ class ExperienceCalculator():
 
 def main(argv):
     del argv  # Unused
+    print(FLAGS.vital_spirit)
+    print(FLAGS.generation)
     calc = ExperienceCalculator(FLAGS.experience_file, FLAGS.encounters_file)
     avgs = [(calc.ExperienceForRoute(route), route) for route in calc.Routes()]
     avgs.sort(reverse=True)
