@@ -37,7 +37,7 @@ def advanceRng(seed, steps):
     while (steps > 0):
         if (steps % 2):
             seed = (seed * multiply[i] + add[i]) % (1 << 32)
-        steps >> 1
+        steps >>= 1
         i += 1
         if (i > 32):
             break
