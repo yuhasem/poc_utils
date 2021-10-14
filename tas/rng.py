@@ -36,7 +36,7 @@ def advanceRng(seed, steps):
     i = 0
     while (steps > 0):
         if (steps % 2):
-            seed = seed * multiply[i] + add[i]
+            seed = (seed * multiply[i] + add[i]) % (1 << 32)
         steps >> 1
         i += 1
         if (i > 32):
@@ -72,7 +72,7 @@ def feebasTilesFromSeed(seed):
     tiles = []
     i = 0
     while i <= 5:
-        seed = advanceRng(seed, 1)
+        seed = (0x41c64e6d * seed + 0x3039) % (1 << 32)
         tile = (top(seed) & 0xffff) % 0x1bf
         if tile == 0:
             tile = 447
