@@ -199,3 +199,142 @@ Now for the fun part:  trying to make sense of all this.  Something like
 Those array address (arr[i] and arr[j]) are set into r0 and r1 right before the function call.  And what we got passed in as r2 we're setting back to r2 before the function call.  I wonder if that function call modifies those values at all?  Need to determine if these are really arguments.
 
 (I still don't understand the reliance on LSL/LSR.)
+
+```
+0x080FA690  PUSH {r4,r5,lr}
+0x080FA692  ADD r3, r0, #0x0
+0x080FA694  ADD r5, r1, #0x0
+    ; So r0 and r1 are args.  r3 should be the "lower" address, r5 should be the "higher address"
+		; r3 and r5 are addresses whose data we might want to swap
+0x080FA696  LSL r2, r2, #0x18
+    ; r2 is arg, but no idea what it represents (was an arg in the previous function, too, but unused).
+0x080FA698  LSR r2, r2, #0x18
+0x080FA69A  ADD r0, r2, #0x0      ; r0 = r2 & 0x003FFFFF
+0x080FA69C  CMP r2, #0x1
+0x080FA69E  BEQ 0x080FA6D6        ; if r2 = 1 goto 0x080FA6D6
+0x080FA6A0  CMP r2, #0x1
+0x080FA6A2  BGT 0x080FA6AA        ; if r2 > 1 goto 0x080FA6AA
+0x080FA6A4  CMP r2, #0x0
+0x080FA6A6  BEQ 0x080FA6B0
+0x080FA6A8  B 0x080FA752
+0x080FA6AA  CMP r2, #0x0
+0x080FA6AC  BEQ 0x080FA702
+0x080FA6AE  B 0x080FA752
+0x080FA6B0  LDRB r0, [r3, #0x0]  ; Load *byte* at r3 + 0
+0x080FA6B2  LSL r1, r0, #0x19
+0x080FA6B4  LDRB r0, [r5, #0x0]
+0x080FA6B6  LSL r0, r0, #0x19
+0x080FA6B8  CMP r1, r0
+0x080FA6BA  BHI 0x080FA74E        ; "Branch if C set and Z clear (unsigned higher)".  Unsighed Higher is like Greater Than but treats the arguments as unsigned.
+0x080FA6BC  CMP r1, r0
+0x080FA6BE  BCC 0x080FA6FE
+0x080FA6C0  LDRH r0, [r3, #0x0]  ; Load *half-word* at r3 + 0
+0x080FA6C2  LSL r3, r0, #0x12
+0x080FA6C4  LDRH r0, [r5, #0x0]
+0x080FA6C6  LSL r2, r0, #0x12
+0x080FA6C8  LSR r1, r3, #0x19
+0x080FA6CA  LSR r0, r2, #0x19
+0x080FA6CC  CMP r1, r0
+0x080FA6CE  BHI 0x080FA74E
+0x080FA6D0  LSR r1, r3, #0x19
+0x080FA6D2  LSR r0, r2, #0x19
+0x080FA6D4  B 0x080FA6FA
+0x080FA6D6  LDRH r0, [r3, #0x0]  ; r0 = bottom 16 bits of *r3
+0x080FA6D8  LSL r4, r0, #0x12    ; r4 = r0 << 12
+0x080FA6DA  LDRH r0, [r5, #0x0]  ; r0 = bottom 16 bits of *r5
+0x080FA6DC  LSL r2, r0, #0x12    ; r2 = r0 << 12
+0x080FA6DE  LSR r1, r4, #0x19    ; r1 = r4 >> 19
+0x080FA6E0  LSR r0, r2, #0x19    ; r0 = r2 >> 19
+    ; so r1 = *r3 >> 7, r0 = *r5 >> 7, which are the addresses we are considering swapping.
+0x080FA6E2  CMP r1, r0
+0x080FA6E4  BHI 0x080FA74E       ; if (r1 > r0) then goto 0x080FA74E
+    ; if the addresses are in different "blocks" of 32 words, return true
+0x080FA6E6  LSR r1, r4, #0x19    ; r1 = r4 >> 19
+0x080FA6E8  LSR r0, r2, #0x19    ; r0 = r2 >> 19
+0x080FA6EA  CMP r1, r0
+0x080FA6EC  BCC 0x080FA6FE       ; if "Unsigned lower" (r1 < r0) goto 0x080FA6FE
+    ; not sure under what condition this could be true...
+		; we load 16 bits shift left 12 and the shift right a total of 38 bits,
+		; so we should have shifted in 10 0s to spare. (I'm assuming this never triggers)
+		; if (0 < 0) return false
+0x080FA6EE  LDRB r0, [r3, #0x0]  ; r0 = bottom 8 bits of *r3
+0x080FA6F0  LSL r1, r0, #0x19    ; r1 = r0 << 19
+0x080FA6F2  LDRB r0, [r5, #0x0]  ; r0 = bottom 8 bits of *r5
+0x080FA6F4  LSL r0, r0, #0x19    ; r0 = r0 << 19
+    ; r1 = *r3 << 19, r0 = *r5 << 19
+0x080FA6F6  CMP r1, r0
+0x080FA6F8  BHI 0x080FA74E       ; if (r1 > r0) return true
+    ; If the lower addrees (r3) is in a differen block of 64 words AND is in a high position in that block than the higher address (r5), return true
+0x080FA6FA  CMP r1, r0
+0x080FA6FC  BCS 0x080FA752       ; if (r1 >= 0) goto calling 0x08040EA4
+    ; really only happens if r1 == r0 (equal position in blocks of 64 words)
+0x080FA6FE  MOV r0, #0x0         ; r0 = 0   (returning false)
+    ; return false
+0x080FA700  B 0x080FA75A         ; goto goto exit (why are there 2 branches??)
+0x080FA702  LDRB r0, [r3, #0x0]
+0x080FA704  LSL r1, r0, #0x19
+0x080FA706  LDRB r0, [r5, #0x0]
+0x080FA708  LSL r0, r0, #0x19
+0x080FA70A  CMP r1, r0
+0x080FA70C  BHI 0x080FA74E
+0x080FA70E  CMP r1, r0
+0x080FA710  BCC 0x080FA6FE
+0x080FA712  LDRH r0, [r3, #0x0]
+0x080FA714  LSL r4, r0, #0x12
+0x080FA716  LDRH r0, [r5, #0x0]
+0x080FA718  LSL r2, r0 #0x12
+0x080FA71A  LSR r1, r4, #0x19
+0x080FA71C  LSR r0, r2, #0x19
+0x080FA71E  CMP r1, r0
+0x080FA720  BHI 0x080FA74E
+0x080FA722  LSR r1, r4, #0x19
+0x080FA724  LSR r0, r2, #0x19
+0x080FA726  CMP r1, r0
+0x080FA728  BCC 0x080FA6FE
+0x080FA72A  LDRH r1, [r3, #0x2]
+0x080FA72C  LDRH r0, [r5, #0x2]
+0x080FA72E  CMP r1, r0
+0x080FA730  BHI 0x080FA74E
+0x080FA732  CMP r1, r0
+0x080FA734  BCC 0x080FA6FE
+0x080FA736  LDRH r1, [r3, #0x4]
+0x080FA738  LDRH r0, [r5, #0x4]
+0x080FA73A  CMP r1, r0
+0x080FA73C  BHI 0x080FA74E
+0x080FA73E  CMP r1, r0
+0x080FA740  BCC 0x080FA6FE
+0x080FA742  LDRH r1, [r3, #0x6]
+0x080FA744  LDRH r0, [r5, #0x6]
+0x080FA746  CMP r1 ,r0
+0x080FA748  BHI 0x080FA74E
+0x080FA74A  CMP r1, r0
+0x080FA74C  BCC 0x080FA6FE
+0x080FA74E  MOV r0, #0x1         ; r0 = 1 (should be read as "success")
+    ; return true
+0x080FA750  B 0x080FA75A         ; goto exit
+0x080FA752  BL 0x08040EA4        ; call 0x08040EA4
+0x080FA756  MOV r1, #0x1         ; r1 = 1
+    ; AdvanceRNG and return false
+0x080FA758  AND r0, r1           ; r0 = r0 & r1, essentially return false if either r0 or r1 is set
+0x080FA75A  POP {r4,r5}          ; exit
+0x080FA75C  POP {r1}
+0x080FA75E  BX r1
+```
+
+I'm assuming little endian-ness because that's the default and nothing I'm seeing says it should be different.  Which means a 0 offset half word is taking least significant 16 bits and a 2 offset half word is taking the most significant 16 bits.
+
+Is it really worth fully understanding this function?  The return decides if we copy data, and we already know that we do (because we found this function by setting a breakpoint when the copy occurred).  If 0x08040EA4 doesn't use write to r3/r5, then there's no point in investigating further.
+
+```
+0x08040EA4  LDR r2, [0x08040EB8] (=0x03004818)  ; I'm...not familiar with this syntax. Ah, 0x08.. is in the ROM not RAM, so the value is always the same and it's just showing me the value
+        A6  LDR r1, [r2, #0x0]
+				A8  LDR r0, [0x08040EBC] (=0x41C64E6D)
+				AA  MUL r0, r1  ; god bless single cycle multiplication
+				AC  LDR r1, [0x08040EC0] (=0x00006073)
+				AE  ADD r0, r0, r1
+			 EB0  STR r0, [r2, 0x0]
+			  B2  LSR r0, r0, #0x10   ; r0 = r0 >> 10 (??)
+				B4  BX lr
+```
+
+This is the AdvanceRNG function (pretty apparent thanks to the syntax showing the values that are being loaded).  I'll start a functions.md doc to write these figured out ones down.
