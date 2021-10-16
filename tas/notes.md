@@ -94,21 +94,16 @@ Let's start looking at the control structure around here to see if I can pin dow
 ```
 ...  ; swap *r4 and *r6
 0x080FA4E0  ADD r0, r5, #0x1   ; r0 = r5 + 1
-0x080FA4E2  LSL r0, r0, #0x10  ; r0 = r0 << 10
-0x080FA4E4  LSR r5, r0, #0x10  ; r5 = r0 >> 10
-    ; Uhhh.. WTF?  LSL = *Logical* shift left and LSR = *Logical* shift right, which means it's shifting in 0s
-		; hmmm....the only way this would make r5 change is if r5 had 1s in the high 10 bits
-		; So this is effectively "clearing" the top 10 bits of r5, after adding 1 to it.
-		; And sets r0 as a side effect, but that's probably an accumulator and will be overwritten?
-		;
-		; r5 = (r5 + 1) & 0x003FFFFF
+0x080FA4E2  LSL r0, r0, #0x10  ; r0 = r0 << 16
+0x080FA4E4  LSR r5, r0, #0x10  ; r5 = r0 >> 16
+    ; r5 = bottom 16 bits of r5 + 1
 0x080FA4E6  CMP r5, r7
 0x080FA4E8  BCC $080FA4BA      ; "Branch if C clear" -> C is clear if a borrow is required -> C is clear if r7 > r5
     ; if r5 <= r7 goto 0x080FA4BA
 0x080FA4EA  MOV r1, r8         ; r1 = r8 (needed because high registers not accesible for normal operations in Thumb mode)
-0x080FA4EC  LSL r0, r1, #0x10  ; r0 = r1 << 10
-0x080FA4EE  LSR r2, r0, #0x10  ; r2 = r0 >> 10
-    ; r2 = r8 & 0x003FFFFF
+0x080FA4EC  LSL r0, r1, #0x10  ; r0 = r1 << 16
+0x080FA4EE  LSR r2, r0, #0x10  ; r2 = r0 >> 16
+    ; r2 = bottom 16 bits of r8
 		; r8 was stored as outer loop counter, makes sense for compare
 0x080FA4F0  CMP r2, r7
 0x080FA4F2  BCC $080FA4A8
@@ -135,11 +130,11 @@ Okay now let's look around at 0x080FA4A8 where the outer loop begins
 0x080FA490  MOV r6, r9
 0x080FA492  MOV r5, r8
 0x080FA494  PUSH {r5-r7}       ; so r4, r5, r6, r7, r8, r9, r10 or unmodified at the end of the function
-0x080FA496  MOV r9, r0         ; r9 appears to be the "argument" to the function
+0x080FA496  MOV r9, r0         ; r0/r9 appears to be the "argument" to the function
 0x080FA498  LSL r1, r1, #0x10  ; r1 also an arg
-0x080FA49A  LSR r7, r1, #0x10  ; r7 = r1 & 0x003FFFFF
+0x080FA49A  LSR r7, r1, #0x10  ; r7 = bottom 16 of r1
 0x080FA49C  LSL r2, r2, #0x18  ; r2 also an arg
-0x080FA49E  LSR r2, r2, #0x18  ; r2 = r2 & 0x00003FFF
+0x080FA49E  LSR r2, r2, #0x18  ; r2 = bottom 8 bits of r2
 0x080FA4A0  MOV r10, r2        ; r10 = r2
 0x080FA4A2  MOV r2, #0x0       ; r2 = 0
 0x080FA4A4  CMP r2, r7
@@ -156,7 +151,7 @@ So r1, r2, and r9 are all used somewhere in the function, with r0 being an accum
 0x080FA4A8  ADD r1, r2 #0x1    ; r1 = r2 + 1
     ; increment outer loop counter (r2 holds increment counter at branch, and 0 at entry)
 0x080FA4AA  LSL r0, r1, #0x10
-0x080FA4AC  LSR r5, r0, #0x10  ; r5 = r1 & 0x003FFFFF
+0x080FA4AC  LSR r5, r0, #0x10  ; r5 = bottom 16 of r1
     ; r5 is inner loop counter, initialized to outer loop counter
 0x080FA4AE  MOV r8, r1         ; r8 = r1
     ; r8 stores outer loop counter
@@ -175,7 +170,7 @@ So r1, r2, and r9 are all used somewhere in the function, with r0 being an accum
 0x080FA4C2  ADD r1, r6, #0x0   ; r1 = r6
 0x080FA4C4  MOV r2, r10        ; r2 = r10
 0x080FA4C6  BL $080FA690       ; Call function at 0x080FA690
-0x080FA4CA  LSL r0, r0, #0x18  ; r0 = r0 << 18
+0x080FA4CA  LSL r0, r0, #0x18  ; r0 = only bottom 8 of r0 left in
 0x080FA4CC  CMP r0, #0x0
 0x080FA4CE  BEQ $080FA4E0      ; if r0 = 0 goto 0x080FA4E0 (skip the swap but don't break the inner loop)
 ...  ; swap *r4 and *r6
@@ -187,8 +182,8 @@ Now for the fun part:  trying to make sense of all this.  Something like
 0x080FA48C(r1, r2, uint16_t arr[]) {
 	for (i = 0; i < r7; i++) {
 		for (j = i; j < r7; j++) {
-			r0 = 0x080FA690()
-			if (r0 % (1 << 18) != 0) {
+			unit8_t r0 = 0x080FA690()
+			if (r0 != 0) {
 			  arr[i] = arr[j]
 			}
 		}
@@ -209,7 +204,7 @@ Those array address (arr[i] and arr[j]) are set into r0 and r1 right before the 
 0x080FA696  LSL r2, r2, #0x18
     ; r2 is arg, but no idea what it represents (was an arg in the previous function, too, but unused).
 0x080FA698  LSR r2, r2, #0x18
-0x080FA69A  ADD r0, r2, #0x0      ; r0 = r2 & 0x003FFFFF
+0x080FA69A  ADD r0, r2, #0x0      ; r0 = bottom 8 bits of r2
 0x080FA69C  CMP r2, #0x1
 0x080FA69E  BEQ 0x080FA6D6        ; if r2 = 1 goto 0x080FA6D6
 0x080FA6A0  CMP r2, #0x1
@@ -240,31 +235,29 @@ Those array address (arr[i] and arr[j]) are set into r0 and r1 right before the 
 0x080FA6D2  LSR r0, r2, #0x19
 0x080FA6D4  B 0x080FA6FA
 0x080FA6D6  LDRH r0, [r3, #0x0]  ; r0 = bottom 16 bits of *r3
-0x080FA6D8  LSL r4, r0, #0x12    ; r4 = r0 << 12
+0x080FA6D8  LSL r4, r0, #0x12    ; r4 = r0 << 18
 0x080FA6DA  LDRH r0, [r5, #0x0]  ; r0 = bottom 16 bits of *r5
-0x080FA6DC  LSL r2, r0, #0x12    ; r2 = r0 << 12
-0x080FA6DE  LSR r1, r4, #0x19    ; r1 = r4 >> 19
-0x080FA6E0  LSR r0, r2, #0x19    ; r0 = r2 >> 19
+0x080FA6DC  LSL r2, r0, #0x12    ; r2 = r0 << 18
+0x080FA6DE  LSR r1, r4, #0x19    ; r1 = r4 >> 25
+0x080FA6E0  LSR r0, r2, #0x19    ; r0 = r2 >> 25
     ; so r1 = *r3 >> 7, r0 = *r5 >> 7, which are the addresses we are considering swapping.
 0x080FA6E2  CMP r1, r0
 0x080FA6E4  BHI 0x080FA74E       ; if (r1 > r0) then goto 0x080FA74E
     ; if the addresses are in different "blocks" of 32 words, return true
-0x080FA6E6  LSR r1, r4, #0x19    ; r1 = r4 >> 19
-0x080FA6E8  LSR r0, r2, #0x19    ; r0 = r2 >> 19
+0x080FA6E6  LSR r1, r4, #0x19    ; r1 = r4 >> 25
+0x080FA6E8  LSR r0, r2, #0x19    ; r0 = r2 >> 25
 0x080FA6EA  CMP r1, r0
 0x080FA6EC  BCC 0x080FA6FE       ; if "Unsigned lower" (r1 < r0) goto 0x080FA6FE
-    ; not sure under what condition this could be true...
-		; we load 16 bits shift left 12 and the shift right a total of 38 bits,
-		; so we should have shifted in 10 0s to spare. (I'm assuming this never triggers)
-		; if (0 < 0) return false
+    ; if ((*r3 / 128) < (*r5 / 128)) return 0;
+		; why tho
 0x080FA6EE  LDRB r0, [r3, #0x0]  ; r0 = bottom 8 bits of *r3
-0x080FA6F0  LSL r1, r0, #0x19    ; r1 = r0 << 19
+0x080FA6F0  LSL r1, r0, #0x19    ; r1 = r0 << 25
 0x080FA6F2  LDRB r0, [r5, #0x0]  ; r0 = bottom 8 bits of *r5
-0x080FA6F4  LSL r0, r0, #0x19    ; r0 = r0 << 19
-    ; r1 = *r3 << 19, r0 = *r5 << 19
+0x080FA6F4  LSL r0, r0, #0x19    ; r0 = r0 << 25
+    ; r1 = *r3 << 25, r0 = *r5 << 25
 0x080FA6F6  CMP r1, r0
 0x080FA6F8  BHI 0x080FA74E       ; if (r1 > r0) return true
-    ; If the lower addrees (r3) is in a differen block of 64 words AND is in a high position in that block than the higher address (r5), return true
+    ; if ((*r3 /%) > (*r5 % 128)), return true
 0x080FA6FA  CMP r1, r0
 0x080FA6FC  BCS 0x080FA752       ; if (r1 >= 0) goto calling 0x08040EA4
     ; really only happens if r1 == r0 (equal position in blocks of 64 words)
@@ -312,9 +305,10 @@ Those array address (arr[i] and arr[j]) are set into r0 and r1 right before the 
 0x080FA74E  MOV r0, #0x1         ; r0 = 1 (should be read as "success")
     ; return true
 0x080FA750  B 0x080FA75A         ; goto exit
-0x080FA752  BL 0x08040EA4        ; call 0x08040EA4
+0x080FA752  BL 0x08040EA4        ; r0, r1, r2 = AdvanceRNG()
 0x080FA756  MOV r1, #0x1         ; r1 = 1
     ; AdvanceRNG and return false
+		; why tho
 0x080FA758  AND r0, r1           ; r0 = r0 & r1, essentially return false if either r0 or r1 is set
 0x080FA75A  POP {r4,r5}          ; exit
 0x080FA75C  POP {r1}
@@ -333,7 +327,7 @@ Is it really worth fully understanding this function?  The return decides if we 
 				AC  LDR r1, [0x08040EC0] (=0x00006073)
 				AE  ADD r0, r0, r1
 			 EB0  STR r0, [r2, 0x0]
-			  B2  LSR r0, r0, #0x10   ; r0 = r0 >> 10 (??)
+			  B2  LSR r0, r0, #0x10   ; r0 = r0 >> 16
 				B4  BX lr
 ```
 
