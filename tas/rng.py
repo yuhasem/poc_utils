@@ -80,4 +80,15 @@ def feebasTilesFromSeed(seed):
             i += 1
             tiles.append(tile)
     return tiles
-    
+
+def rareCandies(seed):
+    candies = 0
+    for i in range(6):
+      seed = advanceRng(seed, 1)
+      if (top(seed) % 10 != 0):
+          continue
+      seed = advanceRng(seed, 1)
+      item = top(seed) % 100
+      if (item >= 50 and item < 60):
+          candies += 1
+    return candies
