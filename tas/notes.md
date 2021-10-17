@@ -182,7 +182,7 @@ Now for the fun part:  trying to make sense of all this.  Something like
 0x080FA48C(r1, r2, uint16_t arr[]) {
 	for (i = 0; i < r7; i++) {
 		for (j = i; j < r7; j++) {
-			unit8_t r0 = 0x080FA690()
+			unit8_t r0 = shouldCopy()
 			if (r0 != 0) {
 			  arr[i] = arr[j]
 			}
@@ -308,7 +308,7 @@ Those array address (arr[i] and arr[j]) are set into r0 and r1 right before the 
 0x080FA752  BL 0x08040EA4        ; r0, r1, r2 = AdvanceRNG()
 0x080FA756  MOV r1, #0x1         ; r1 = 1
     ; AdvanceRNG and return false
-		; why tho
+		; why tho, double checked, it's not using this value at all.
 0x080FA758  AND r0, r1           ; r0 = r0 & r1, essentially return false if either r0 or r1 is set
 0x080FA75A  POP {r4,r5}          ; exit
 0x080FA75C  POP {r1}
@@ -332,3 +332,158 @@ Is it really worth fully understanding this function?  The return decides if we 
 ```
 
 This is the AdvanceRNG function (pretty apparent thanks to the syntax showing the values that are being loaded).  I'll start a functions.md doc to write these figured out ones down.
+
+I have a theory as to why all the LSL/LSR (sometimes redundantly).  If the game was compiled, then it's likely they would have types and variables.  So if a variable was declared as type `uint16_t` or equivalent (unsigned 16 bit integer), then the compiler would think "oh, I have to make sure this is 16 bits" and so does `<<16` followed by `>>16` to ensure the top 16 bits are cleared.
+
+0x080FA690 is a "should copy" function.  It's not writing to the place that gets copied from, but that's what I need to know.  I may come back to this if I need to understand when it copies, but I think this is enough to know for now.
+
+Let's look back at 0x080FA48C.  I should be able to see the Link Register when this gets called (even if BizHawk's disassembler crashes again), which will tell me where this is getting called from.
+
+After much bullshit with BizHawk's debugger not breakpointing when it said "Breakpoint Hit," I took out a bigger hammer:  Trace Logger.  This shit just logs ALL the commands that were run (Around 80k in the frame I'm interested).  It logs the PC after the instruction ran, and also uses odd numbers because of Thumb mode, but I managed to find that the code above is in fact running and is called from around 0x080FA226.
+
+```
+0x080FA21C  LDR r0, [0x080FA23C] (=0x02028508)
+    ; right around 0x0202850A (FID) so that makes sense and validates that this wasn't a waste.
+0x080FA21E  MOV r1, #0x5
+0x080FA220  MOV r2, #0x0
+0x080FA222  BL 0x080FA48C  ; Call SwapMem(r0, r1, r2)
+    ; r1 is loop limit, so it will only copy 4 addresses (matches observation). r2 is passed through to ShouldSwap()
+0x080FA226  POP {r3,r4}
+0x080FA228  MOV r8, r3
+0x080FA22A  MOV r9, r4
+0x080FA22C  POP {r4-r7}
+0x080FA22E  POP {r0}
+0x080FA230  BX r0
+```
+
+Yay! This goes somewhere!  So let's look at what's being done above to see how the memory is setup before the swap.
+
+```
+0x080FA19C  PUSH {r4-r7,lr}
+0x080FA19E  MOV r7, r9
+0x080FA1A0  MOV r6, r8
+0x080FA1A2  PUSH {r6,r7}
+0x080FA1A4  MOV r6, #0x0
+    ; r6 appears to be a loop counter.
+0x080FA1A6  LDR r7, [0x080FA1D4] (=0x02025734)
+0x080FA1A8  LDR r0, [0x080FA1D8] (=0x00002DD4)
+0x080FA1AA  ADD r0, r0, r7
+0x080FA1AC  MOV r9, r0
+    ; r9 = 0x02028508
+0x080FA1AE  MOV r1, #0x1
+0x080FA1B0  MOV r8, r1
+    ; r8 = 1, constant
+    ; LOOP STARTS BELOW HERE
+0x080FA1B2  MOV r0, #0xA
+0x080FA1B4  BL 0x080EB74C
+    ; This like sets r0 to a new value
+0x080FA1B8  LSL r4, r6, #0x03
+    ; << 3 means r6 may also be used as an index to a uint16_t[].
+0x080FA1BA  ADD r5, r4, r7
+    ; so r7 is probably an address (0x02025734 if it's not modified by 0x080EB74C)
+0x080FA1BC  LDR r2, [0x080FA1DC] (=0x00002DD8)
+0x080FA1BE  ADD r1, r5, r2
+    ; r1 = 0x0202850C + index
+0x080FA1C0  STRH r0, [r1, #0x0]  ; *r1 = r0
+0x080FA1C2  BL 0x08040EA4
+    ; This likely sets r0 to a new value.
+0x080FA1C6  MOV r1, r8
+0x080FA1C8  AND r1, r0           ; r1 = r0 & 1
+0x080FA1CA  CMP r1, #0x0
+0x080FA1CC  BEQ 0x080FA1E0       ; if r0 % 2 == 0 goto 0x080FA1E0
+0x080FA1CE  MOV r0, #0xC         ; r0 = 0xC
+0x080FA1D0  B 0x080FA1E2
+...  ; This also just data that's used elsewhere in the function. (Reference Addresses)
+0x080FA1E0  MOV r0, #0xD
+     ; r0 = 13 if r0 % 2 == 0 else 12
+0x080FA1E2  BL 0x080EB74C
+0x080FA1E6  LDR r2, [0x080FA234] (=0x00002DDA)
+0x080FA1E8  ADD r1, r5, r2
+     ; r1 = 0x0202850E + index
+		 ; assuming r5 is unchanged 
+0x080FA1EA  STRH r0, [r1, #0x0]  ; *r1 = r0
+0x080FA1EC  BL 0x08040EA4
+     ; This likely sets r0 to a new value
+0x080FA1F0  ADD r3, r4, r7
+     ; r3 = 0x02025734 + index
+		 ; assuming r7 and r4 are unchanged
+0x080FA1F2  MOV r2, r8           ; r2 = 1
+0x080FA1F4  AND r2, r0           ; r2 = r0 & 1
+0x080FA1F6  LDR r5, [0x080FA238] (=0x00002DD5)
+0x080FA1F8  ADD r3, r3, r5
+     ; r3 = 0x02028509 + index
+0x080FA1FA  LSL r2, r2, #0x06    ; r2 = either 0 or 64
+0x080FA1FC  LDRB r0, [r3, #0x0]  ; r0 = *r3 (1 byte)
+0x080FA1FE  MOV r5, #0x41
+0x080FA200  NEG r5, r5
+0x080FA202  ADD r1, r5, #0x0     ; r1 = -0x41
+0x080FA204  AND r0, r1           ; r0 = *r3 & 0xFFFFFFBF  (B = 0b1011)
+0x080FA206  ORR r0, r2           ; it's just a regular or, don't let the extra r confuse you.
+     ; you see that bit we left out of the mask above?  lol, we're going to maybe set it here.
+0x080FA208  STRB r0, [r3, #0x0]  ; write it back
+     ; honestly wtf
+0x080FA20A  MOV r1, r9
+    ; r1 = 0x02028508
+0x080FA20C  ADD r0, r4, r1
+    ; r0 = 0x02028508 + index
+		; assuming r4 is unchanged
+0x080FA20E  BL 0x080FA760
+0x080FA212  ADD r0, r6, #0x1
+0x080FA214  LSL r0, r0 #0x10
+0x080FA216  LSR r6, r0 #0x10  ; uint16_t r6 = r6 + 1
+    ; increment loop counter
+0x080FA218  CMP r6, #0x4
+0x080FA21A  BLS 0x080FA1B2    ; if r6 <= 4 go back to near the top
+... ; SwapMem and exit
+```
+
+Large, but mostly seems to be delegating logic.  Based on what I know, 0x080EB74C is probably the best place to search next.  It writes to 0x0202850C + index and those values then get swapped down 4 into the FID.
+
+```
+0x080EB74C  PUSH {r4,lr}
+0x080EB74E  LSL r0, r0, #0x10
+0x080EB750  LSR r4, r0, #0x10  ; r4 = uint16_t r0
+    ; so far I know of the values 10, 12, and 13 being passed into this function
+0x080EB752  BL $0x08040ea4
+0x080EB756  LSL r0, r0, #0x10
+0x080EB758  LSR r0, r0, #0x10  ; r0 = uint16_t r0
+0x080EB75A  LDR r1, [0x080EB798] (=0x083df072)
+0x080EB75C  ADD r1, r4, r1
+0x080EB75E  LDRB r1, [r1, #0x0]
+0x080EB760  BL 0x081E0920
+0x080EB764  LSL r0, r0, #0x10
+0x080EB766  LSR r2, r0, #0x10  ; r2 = uint16_t r0
+0x080EB768  CMP r4, #0x0       ; the big question here is whether r4 is modified in a subfunction or not
+0x080EB76A  BEQ 0x080EB778
+0x080EB76C  CMP r4, #0x15
+0x080EB76E  BEQ 0x080EB778
+0x080EB770  CMP r4, #0x12
+0x080EB772  BEQ 0x080EB778
+0x080EB774  CMP r4, #0x13
+0x080EB776  BNE 0x080EB786
+    ; if (r4 != 0 && r4 != 21 && r4 != 18 && r4 != 19) goto 0x080EB786
+0x080EB778  LDR r1, [0x080EB79C] (=0x083DE158)
+0x080EB77A  LSL r0, r4, #0x02  ; word aligned address?
+0x080EB77C  ADD r0, r0, r1
+0x080EB77E  LDR r1, [r0, #0x0]
+    ; if r0 = 0 -> r1 = 0x083DBFA4
+		; if r0 = 18 -> r1 = 0x083DDBB4
+		; if r0 = 19 -> r1 = 0x083DDCE6
+		; if r0 = 21 -> r1 = 0x083DDF60
+0x080EB780  LSL r0, r2, #0x01  ; half word aligned address?
+0x080EB782  ADD r0, r0, r1
+0x080EB784  LDRH r2, [r0, #0x0]  ; need to figure out if r0/r2/r4 are set by the subroutines above
+    ; looking at 0x083DBFA4, this seems to be an array of data, but I can't tell what of
+		; Numbers look like 0x0187, 0x0124, 0x0164, 0x0077, 0x0118, 0x0186, ...
+		; similar for other indecies given above
+0x080EB786  MOV r0, #0x7f  ; hello negative 1
+0x080EB788  AND r0, r4     ; bottom 7 bits of r4
+0x080EB78A  LSL r0, r0, #0x09  ; then shift left 9
+0x080EB78C  LDR r1, [0x080EB7A0] (=0x000001ff)
+0x080EB78E  AND r2, r1
+0x080EB790  ORR r0, r2
+    ; r0 = (r4 % 128) * 512 & (r2 % 512)
+0x080EB792  POP {r4}
+0x080EB794  POP {r1}
+0x080EB770  BX r1
+```
