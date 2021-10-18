@@ -9,3 +9,9 @@ Calls AdvanceRNG() sometimes (circumstances unknown)
 
 0x080FA48C : SwapMem(address start (r0), uint16_t num_to_swap (r1), unit8_t r2)
 Swaps num_to_swap consecutive 16 bit datas at start with start + num_to_swap*16.
+
+0x081E0920 : r0 = Remainder(int32_t dividend (r0), int32_t divisor (r1))
+r0 is returned as the remainder when |dividend| is divided by |divisor|.
+r1 must not be 0.
+r1 and r4 will be unchanged by this function.
+r2, r3, and r12 will be overwritten by this function.

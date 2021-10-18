@@ -172,7 +172,7 @@ So r1, r2, and r9 are all used somewhere in the function, with r0 being an accum
 0x080FA4C6  BL $080FA690       ; Call function at 0x080FA690
 0x080FA4CA  LSL r0, r0, #0x18  ; r0 = only bottom 8 of r0 left in
 0x080FA4CC  CMP r0, #0x0
-0x080FA4CE  BEQ $080FA4E0      ; if r0 = 0 goto 0x080FA4E0 (skip the swap but don't break the inner loop)
+0x080FA4CE  BEQ 0x080FA4E0      ; if r0 = 0 goto 0x080FA4E0 (skip the swap but don't break the inner loop)
 ...  ; swap *r4 and *r6
 ```
 
@@ -376,7 +376,8 @@ Yay! This goes somewhere!  So let's look at what's being done above to see how t
     ; LOOP STARTS BELOW HERE
 0x080FA1B2  MOV r0, #0xA
 0x080FA1B4  BL 0x080EB74C
-    ; This like sets r0 to a new value
+    ; This sets r0 to a vlue where 7 bits are the passed in value and 9 bits are a random number
+		; between 0 and a size indexed by the passed in value
 0x080FA1B8  LSL r4, r6, #0x03
     ; << 3 means r6 may also be used as an index to a uint16_t[].
 0x080FA1BA  ADD r5, r4, r7
@@ -385,6 +386,7 @@ Yay! This goes somewhere!  So let's look at what's being done above to see how t
 0x080FA1BE  ADD r1, r5, r2
     ; r1 = 0x0202850C + index
 0x080FA1C0  STRH r0, [r1, #0x0]  ; *r1 = r0
+    ; r0 is index + random size, stored into memory here
 0x080FA1C2  BL 0x08040EA4
     ; This likely sets r0 to a new value.
 0x080FA1C6  MOV r1, r8
@@ -397,11 +399,14 @@ Yay! This goes somewhere!  So let's look at what's being done above to see how t
 0x080FA1E0  MOV r0, #0xD
      ; r0 = 13 if r0 % 2 == 0 else 12
 0x080FA1E2  BL 0x080EB74C
+    ; This sets r0 to a vlue where 7 bits are the passed in value and 9 bits are a random number
+		; between 0 and a size indexed by the passed in value
 0x080FA1E6  LDR r2, [0x080FA234] (=0x00002DDA)
 0x080FA1E8  ADD r1, r5, r2
      ; r1 = 0x0202850E + index
 		 ; assuming r5 is unchanged 
 0x080FA1EA  STRH r0, [r1, #0x0]  ; *r1 = r0
+    ; r0 is index + random size, stored into memory here
 0x080FA1EC  BL 0x08040EA4
      ; This likely sets r0 to a new value
 0x080FA1F0  ADD r3, r4, r7
@@ -437,23 +442,29 @@ Yay! This goes somewhere!  So let's look at what's being done above to see how t
 ... ; SwapMem and exit
 ```
 
-Large, but mostly seems to be delegating logic.  Based on what I know, 0x080EB74C is probably the best place to search next.  It writes to 0x0202850C + index and those values then get swapped down 4 into the FID.
+Large, but mostly seems to be delegating logic.  Based on what I know, 0x080EB74C is probably the best place to search next.  It takes (0x0202850C + index) as an arg and those values then get swapped down 4 into the FID.
 
 ```
+    ; so far seen called with r0 = 10, 12, 13
 0x080EB74C  PUSH {r4,lr}
 0x080EB74E  LSL r0, r0, #0x10
 0x080EB750  LSR r4, r0, #0x10  ; r4 = uint16_t r0
     ; so far I know of the values 10, 12, and 13 being passed into this function
-0x080EB752  BL $0x08040ea4
+0x080EB752  BL $0x08040EA4     ; r0 = AdvanceRNG()
 0x080EB756  LSL r0, r0, #0x10
 0x080EB758  LSR r0, r0, #0x10  ; r0 = uint16_t r0
 0x080EB75A  LDR r1, [0x080EB798] (=0x083df072)
 0x080EB75C  ADD r1, r4, r1
 0x080EB75E  LDRB r1, [r1, #0x0]
-0x080EB760  BL 0x081E0920
+    ; given input r4 = 10, 12, 13 -> r1 = 0x45 (69), 0x2D (45), 0x36 (54)
+		; size_t r1 ??
+0x080EB760  BL 0x081E0920      ; call r0 = Remainder(r0, r1)
+    ; so r1 is some data indexed (by r4) in an array at 0x083df072
+		; The return here is a random number modulo that data, and the index (r4) is unchanged
 0x080EB764  LSL r0, r0, #0x10
 0x080EB766  LSR r2, r0, #0x10  ; r2 = uint16_t r0
-0x080EB768  CMP r4, #0x0       ; the big question here is whether r4 is modified in a subfunction or not
+    ; r2 is a number between 0 and the "size" given by the input index.
+0x080EB768  CMP r4, #0x0
 0x080EB76A  BEQ 0x080EB778
 0x080EB76C  CMP r4, #0x15
 0x080EB76E  BEQ 0x080EB778
@@ -462,6 +473,7 @@ Large, but mostly seems to be delegating logic.  Based on what I know, 0x080EB74
 0x080EB774  CMP r4, #0x13
 0x080EB776  BNE 0x080EB786
     ; if (r4 != 0 && r4 != 21 && r4 != 18 && r4 != 19) goto 0x080EB786
+		; This is always true for the values I'm investigating.
 0x080EB778  LDR r1, [0x080EB79C] (=0x083DE158)
 0x080EB77A  LSL r0, r4, #0x02  ; word aligned address?
 0x080EB77C  ADD r0, r0, r1
@@ -482,8 +494,17 @@ Large, but mostly seems to be delegating logic.  Based on what I know, 0x080EB74
 0x080EB78C  LDR r1, [0x080EB7A0] (=0x000001ff)
 0x080EB78E  AND r2, r1
 0x080EB790  ORR r0, r2
-    ; r0 = (r4 % 128) * 512 & (r2 % 512)
+		; r0 = 0b0000'0000'0000'0000'xxxx'xxxy'yyyy'yyyy
+		;                           from r4 ^  from r2 ^
+		; r4 being the index, r2 being a random number between 0 and "size"
+		; The sizes I've seen are all less than 512, so there's no information loss here.
 0x080EB792  POP {r4}
 0x080EB794  POP {r1}
 0x080EB770  BX r1
 ```
+
+One thing that stands out to me is that there is no `STR` command.  So it's not directly writing to FID or FID-swap.  The address would have been passed in as r1, but it looks the result (r0) is getting stored into that address.  So let's focus on what r0 gets returned as.
+
+~~Need to understand subroutine 0x081E0920.~~  I'll spare the massive text blob since it's very uninteresting once you understand the function.  0x081E0920 returns in r0 the remainder of r0 divided by r1.
+
+Still not quite sure what to call 0x080EB74C.  It is returning both the given index and a random size.  Are either used by the callers?
