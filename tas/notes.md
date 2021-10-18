@@ -19,7 +19,43 @@ so multiple RNG calls on frame of Feebas set.  Need to find out which one is doi
 
 Feebas Seed: 0xB691 (with (0x1424) in the same word)
 
-Nothing obvious standing out (not a direct copy, not an xor with anything else I have).
+~~Nothing obvious standing out (not a direct copy, not an xor with anything else I have).~~
+
+It is a direct copy and I'm not sure how I missed this before.  However, the number of calls seems variable.  In another example I found 27 calls on the FID frame, the 11th of which was the FID.  I have a feeling I recorded something wrong in my original notes above...
+
+Let's get more examples:
+
+Initial Seed | TID | Calls to TID | SID | Calls to SID | FID | Calls to FID
+-|-|-|-|-|-|-
+0x29E07E85 | 0xF4E7 | 76 | 0x61A2 | 77 | 0x14E2 | 112
+0xC8D91624 | 0xD5C4 | 76 | 0x20DC | 77 | 0xB0C0 | 120
+0x81D5DB2D | 0x3D13 | 76 | 0xF51C | 77 | 0x7DD6 | 96
+0x7B2F0FEA | 0xD51C | 76 | 0xED94 | 77 | 0xBEA7 | 96
+
+So there is a variable number of RNG calls.  This might require a deeper understanding of what's going on here (and maybe not just on the FID frame).
+
+I wonder what the FID looks like on consecutive A press frames?
+
+Initial Seed | FID | Calls to FID
+-|-|-
+0x0CE80BF4 | 0xB140 | 103
+0x6529CF57 | 0xA432 | 113
+0x44442A7E | 0xA432 | 112
+0xB16CDC19 | 0xA432 | 111
+0x4ABFB518 | 0xF51C | 111
+0x655DCBAB | 0xF51C | 110
+0xAE403242 | 0xF51C | 109
+0x61B1E28D | 0xF51C | 108
+0xD1D2CC7C | 0xB140 | 95
+0x34F7393F | 0xA432 | 105
+0x266EF246 | 0xA432 | 104
+0x5332DC41 | 0xA432 | 103
+0xC709F620 | 0xA432 | 102
+0x44FBEC13 | 0xF51C | 102
+0x8AE3AE8A | 0xD5C4 | 111
+0x8ADBBD35 | 0xF0CA | 87
+
+So it actually seems very stable around the seed.  I wonder if there's some kind of rejection sampling happening here?
 
 ## FID generation
 
