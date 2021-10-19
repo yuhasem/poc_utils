@@ -15,3 +15,8 @@ r0 is returned as the remainder when |dividend| is divided by |divisor|.
 r1 must not be 0.
 r1 and r4 will be unchanged by this function.
 r2, r3, and r12 will be overwritten by this function.
+
+0x081E0EB0 : r0 = UnsignedRemainder(uint32_t dividend (r0), int32_t divisor (r1))
+r0 is returned as he remainder when |dividend| is divided by |divisor|.
+if r1 = 0, returns r0 = 0.
+Does not try to re-sign r0 or r1.  Slightly more efficient than Remainder().

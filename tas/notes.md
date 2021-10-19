@@ -424,7 +424,7 @@ Yay! This goes somewhere!  So let's look at what's being done above to see how t
 0x080FA1C0  STRH r0, [r1, #0x0]  ; *r1 = r0
     ; r0 is index + random size, stored into memory here
 0x080FA1C2  BL 0x08040EA4
-    ; This likely sets r0 to a new value.
+    ; r0 = AdvanceRNG()
 0x080FA1C6  MOV r1, r8
 0x080FA1C8  AND r1, r0           ; r1 = r0 & 1
 0x080FA1CA  CMP r1, #0x0
@@ -442,14 +442,15 @@ Yay! This goes somewhere!  So let's look at what's being done above to see how t
      ; r1 = 0x0202850E + index
 		 ; assuming r5 is unchanged 
 0x080FA1EA  STRH r0, [r1, #0x0]  ; *r1 = r0
-    ; r0 is index + random size, stored into memory here
+     ; r0 is index + random size, stored into memory here
 0x080FA1EC  BL 0x08040EA4
-     ; This likely sets r0 to a new value
+     ; r0 = AdvanceRNG()
 0x080FA1F0  ADD r3, r4, r7
      ; r3 = 0x02025734 + index
 		 ; assuming r7 and r4 are unchanged
 0x080FA1F2  MOV r2, r8           ; r2 = 1
-0x080FA1F4  AND r2, r0           ; r2 = r0 & 1
+0x080FA1F4  AND r2, r0           ; r2 = RNG & 1
+     ; r2 is a coinflip!!
 0x080FA1F6  LDR r5, [0x080FA238] (=0x00002DD5)
 0x080FA1F8  ADD r3, r3, r5
      ; r3 = 0x02028509 + index
@@ -543,4 +544,95 @@ One thing that stands out to me is that there is no `STR` command.  So it's not 
 
 ~~Need to understand subroutine 0x081E0920.~~  I'll spare the massive text blob since it's very uninteresting once you understand the function.  0x081E0920 returns in r0 the remainder of r0 divided by r1.
 
-Still not quite sure what to call 0x080EB74C.  It is returning both the given index and a random size.  Are either used by the callers?
+Still not quite sure what to call 0x080EB74C.  It is returning both the given index and a random size.  Are either used by the callers?  Nope, just stored, but I already verified this is not what is written into the FID.  So something else is at play.
+
+Going up one step. To understand 0x080FA19C there is one more subroutine 0x080FA760.
+
+```
+    ; args: r0 = address around 0x02028508
+0x080FA760  PUSH {r4,r5,lr}
+0x080FA762  ADD r5, r0, #0x0  ; r5 = r0
+0x080FA764  BL 0x08040EA4     ; r0 = AdvanceRNG()
+... uint16_t r0;
+0x080FA76C  MOV r1, #0x62
+0x080FA76E  BL 0x081E0EB0     ; r0 = UnsignedRemainder(RNG, 0x62)
+... uint16_t r4 = r0;
+0x080FA776  CMP r4, #0x32
+0x080FA778  BLS 0x080FA7A2    ; BLS = Branch unsigned lower or same
+    ; if a random number in [0, 0x62) is <= 0x32, no more RNG calls.
+0x080FA77A  BL 0x08040EA4     ; r0 = AdvanceRNG()
+... uint16_t r0;
+0x080FA782  MOV r1, #0x62
+0x080FA784  BL 0x081E0EB0
+... uint16_t r4 = r0;
+0x080FA78C  CMP r4, #0x50
+0x080FA78E  BLS 0x080FA7A2
+    ; if a random number in [0, #0x62) is <= 0x50, no more RNG calls.
+0x080FA790  BL 0x08040EA4     ; r0 = AdvanceRNG()
+... uint16_t r0;
+0x080FA798  MOV r1, #0x62
+0x080FA79A  BL 0x081E0EB0
+... uint16_t r4 = r0;
+    ; r4 = rand[0, #0x62)
+    ; LABEL: Done-with-rng
+0x080FA7A2  ADD r1, r4, #0x0  ; r1 = r4
+0x080FA7A4  ADD r1, #0x1E
+0x080FA7A6  MOV r0, #0x7f
+0x080FA7A8  AND r1, r0
+    ; take only the bottom 7 bits of whatever is returned by the final call to 0x081E0EB0
+0x080FA7AA  LSL r1, r1, #0x07
+    ; r1 = and move them up 7 bits
+0x080FA7AC  LDRH r2, [r5, #0x0]  ; LOAD HALF WORD
+0x080FA7AE  LDR r0, [0x080FA7E4] (=0xFFFFC07F)  ; 0b1111'1111'1111'1111'1100'0000'0111'1111
+0x080FA7B0  AND r0, r2
+0x080FA7B2  ORR r0, r1
+    ; load something from *r5 and replace [8:14] with r1 
+0x080FA7B4  STRH r0, [r5, #0x0]
+    ; And write it back
+0x080FA7B6  BL 0x08040EA4     ; r0 = AdvanceRNG()
+... uint16_t r0;
+0x080FA7BE  ADD r1, r4, #0x1
+0x080FA7C0  BL 0x081E0920     ; r0 = Remainder(r0, r1)
+    ; r0 = RNG % ((last call to 0x081E0EB0) + 1)
+		; i.e. number between 0 and 0x081E0EB0 return inclusive.
+0x080FA7C4  ADD r0, #0x1E     ; r0 += 30
+0x080FA7C6  MOVE r1, #0x7f
+0x080FA7C8  AND r0, r1        ; take only last 7 bits of r0
+0x080FA7CA  LDRB r2, [r5, #0x0]  ; LOAD BYTE
+0x080FA7CC  MOV r1, #0x80     ; r1 = 0b0100'0000
+0x080FA7CE  NEG r1, r1        ; r1 = 0b1100'0000  ; only 7 bit immediates, I guess?
+0x080FA7D0  AND r1, r2        ; only the 2 bits of r2
+0x080FA7D2  ORR r1, r0        ; r1 = top 2 bits of r2 and bottom 7 bits of r0.
+                              ; there's an overlap. Is this the reason for the bullshitery around the 6th bit maybe flip?
+0x080FA7D4  STRB r1, [r5, #0x0]  ; write it back
+0x080FA7D6  BL 0x08040EA4     ; r0 = AdvanceRNG()
+0x080FA7DA  STRH r0, [r5, #0x2]  ; write RNG in the top half of the word we were messing with.
+    ; This is, without a doubt, the FID generating write.
+0x080FA7DC  POP {r4,r5}
+0x080FA7DE  POP {r0}
+0x080FA7E0  BX r0
+```
+
+I've started abbreviating the LSL/LSR by 16 because it's just to tedious.
+
+Well, this has variable number of RNG calls, which is certainly something I'm looking for.  I am convinced 0x080FA7D6 is the FID generating RNG call, because nothing else I've seen writes RNG directly to memory.  Now I just have to puzzle out how many RNG calls happen before it... Also we have loops.  Do we generate multiple possible FIDs and only copy in one we want?
+
+0x081E0EB0 is a slightly different remainder function, which appears to assume it's inputs aren't negative and which is slightly more efficient.  I would like to highlight the most pointles piece of code I've ran across so far:
+
+```
+0x081E0F66  PUSH {lr}
+0x081E0F68  BL 0x081E08A4
+0x081E086C  MOV r0, 0x0
+0x081E086E  POP {pc}
+...
+0x081E08A4  MOV PC, LR    ; what the actual fuck
+```
+
+I'd also like to point out that there's a single instruction multiply limited to 34 cycles (with early termination) that could be used for random ranges.  But instead they chose to actually do remainders and implement in a super inefficient way...
+
+```
+; The dream random range function:
+0x00  BL 0x0x08040EA4
+0x04  MOV r1, <data>
+0x06  MUL r0, r1
+0x08  LSR r0, r0, #0x10
