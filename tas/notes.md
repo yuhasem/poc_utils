@@ -415,9 +415,9 @@ Yay! This goes somewhere!  So let's look at what's being done above to see how t
     ; This sets r0 to a vlue where 7 bits are the passed in value and 9 bits are a random number
 		; between 0 and a size indexed by the passed in value
 0x080FA1B8  LSL r4, r6, #0x03
-    ; << 3 means r6 may also be used as an index to a uint16_t[].
+    ; << 3 means r6 may also be used as an index to a uint64_t[].
 0x080FA1BA  ADD r5, r4, r7
-    ; so r7 is probably an address (0x02025734 if it's not modified by 0x080EB74C)
+    ; so r7 is probably an address = 0x02025734
 0x080FA1BC  LDR r2, [0x080FA1DC] (=0x00002DD8)
 0x080FA1BE  ADD r1, r5, r2
     ; r1 = 0x0202850C + index
@@ -462,6 +462,8 @@ Yay! This goes somewhere!  So let's look at what's being done above to see how t
 0x080FA204  AND r0, r1           ; r0 = *r3 & 0xFFFFFFBF  (B = 0b1011)
 0x080FA206  ORR r0, r2           ; it's just a regular or, don't let the extra r confuse you.
      ; you see that bit we left out of the mask above?  lol, we're going to maybe set it here.
+		 ; It's because this is left out of SetPotentialFID.  We're essentially ensuring that it'said
+		 ; random because SetPotentialFID can't.
 0x080FA208  STRB r0, [r3, #0x0]  ; write it back
      ; honestly wtf
 0x080FA20A  MOV r1, r9
@@ -469,7 +471,7 @@ Yay! This goes somewhere!  So let's look at what's being done above to see how t
 0x080FA20C  ADD r0, r4, r1
     ; r0 = 0x02028508 + index
 		; assuming r4 is unchanged
-0x080FA20E  BL 0x080FA760
+0x080FA20E  BL 0x080FA760        ; SetPotentialFID(r0)
 0x080FA212  ADD r0, r6, #0x1
 0x080FA214  LSL r0, r0 #0x10
 0x080FA216  LSR r6, r0 #0x10  ; uint16_t r6 = r6 + 1
@@ -525,7 +527,7 @@ Large, but mostly seems to be delegating logic.  Based on what I know, 0x080EB74
     ; looking at 0x083DBFA4, this seems to be an array of data, but I can't tell what of
 		; Numbers look like 0x0187, 0x0124, 0x0164, 0x0077, 0x0118, 0x0186, ...
 		; similar for other indecies given above
-0x080EB786  MOV r0, #0x7f  ; hello negative 1
+0x080EB786  MOV r0, #0x7f
 0x080EB788  AND r0, r4     ; bottom 7 bits of r4
 0x080EB78A  LSL r0, r0, #0x09  ; then shift left 9
 0x080EB78C  LDR r1, [0x080EB7A0] (=0x000001ff)
@@ -533,7 +535,8 @@ Large, but mostly seems to be delegating logic.  Based on what I know, 0x080EB74
 0x080EB790  ORR r0, r2
 		; r0 = 0b0000'0000'0000'0000'xxxx'xxxy'yyyy'yyyy
 		;                           from r4 ^  from r2 ^
-		; r4 being the index, r2 being a random number between 0 and "size"
+		; r4 being the index, r2 being a number loaded from an array with random index.
+		; r2 = 0x083DE158[index][rng(0,0x083DF071[index])]
 		; The sizes I've seen are all less than 512, so there's no information loss here.
 0x080EB792  POP {r4}
 0x080EB794  POP {r1}
@@ -576,38 +579,47 @@ Going up one step. To understand 0x080FA19C there is one more subroutine 0x080FA
     ; r4 = rand[0, #0x62)
     ; LABEL: Done-with-rng
 0x080FA7A2  ADD r1, r4, #0x0  ; r1 = r4
-0x080FA7A4  ADD r1, #0x1E
+    ; r1 = rand[0, #0x62) but it's more likely to be on the lower side.
+0x080FA7A4  ADD r1, #0x1E     ; 0x62 + 0x1E = 0x80 ; 0b1000'0000
+    ; r1 = rand[0x1E, 0x80)
 0x080FA7A6  MOV r0, #0x7f
 0x080FA7A8  AND r1, r0
-    ; take only the bottom 7 bits of whatever is returned by the final call to 0x081E0EB0
+    ; bottom 7 bits does not lose any information.
 0x080FA7AA  LSL r1, r1, #0x07
     ; r1 = and move them up 7 bits
 0x080FA7AC  LDRH r2, [r5, #0x0]  ; LOAD HALF WORD
 0x080FA7AE  LDR r0, [0x080FA7E4] (=0xFFFFC07F)  ; 0b1111'1111'1111'1111'1100'0000'0111'1111
 0x080FA7B0  AND r0, r2
 0x080FA7B2  ORR r0, r1
-    ; load something from *r5 and replace [8:14] with r1 
+    ; load something from *r5 and replace [7:13] with r1 
 0x080FA7B4  STRH r0, [r5, #0x0]
     ; And write it back
 0x080FA7B6  BL 0x08040EA4     ; r0 = AdvanceRNG()
 ... uint16_t r0;
 0x080FA7BE  ADD r1, r4, #0x1
+    ; r1 = rand[0x1, 0x63)
 0x080FA7C0  BL 0x081E0920     ; r0 = Remainder(r0, r1)
-    ; r0 = RNG % ((last call to 0x081E0EB0) + 1)
-		; i.e. number between 0 and 0x081E0EB0 return inclusive.
+    ; r0 = RNG % rand[0x1, 0x63)
 0x080FA7C4  ADD r0, #0x1E     ; r0 += 30
+    ; r0 = rand[0, 0x81)
 0x080FA7C6  MOVE r1, #0x7f
 0x080FA7C8  AND r0, r1        ; take only last 7 bits of r0
+    ; can lose information, but only if r0 = 0x80, which is equivalent to r0 = 0x0.
 0x080FA7CA  LDRB r2, [r5, #0x0]  ; LOAD BYTE
 0x080FA7CC  MOV r1, #0x80     ; r1 = 0b0100'0000
-0x080FA7CE  NEG r1, r1        ; r1 = 0b1100'0000  ; only 7 bit immediates, I guess?
+0x080FA7CE  NEG r1, r1        ; r1 = 0b1...'1100'0000  ; only 7 bit immediates, I guess?
 0x080FA7D0  AND r1, r2        ; only the 2 bits of r2
 0x080FA7D2  ORR r1, r0        ; r1 = top 2 bits of r2 and bottom 7 bits of r0.
-                              ; there's an overlap. Is this the reason for the bullshitery around the 6th bit maybe flip?
 0x080FA7D4  STRB r1, [r5, #0x0]  ; write it back
 0x080FA7D6  BL 0x08040EA4     ; r0 = AdvanceRNG()
 0x080FA7DA  STRH r0, [r5, #0x2]  ; write RNG in the top half of the word we were messing with.
     ; This is, without a doubt, the FID generating write.
+		; *r5 = XXXX'XXXX'XXXX'XXXX'??YY'YYYY'YWZZ'ZZZZ
+		;      RNG (Potential FID)^
+		;  whatever was there before ^
+		;        rand[0x1E,0x80) (weighted low)^
+		;      whatever was there before | RNG ^
+		;    rand[0x0,0x80) (almost perfectly unifrom)^
 0x080FA7DC  POP {r4,r5}
 0x080FA7DE  POP {r0}
 0x080FA7E0  BX r0
@@ -625,7 +637,7 @@ Well, this has variable number of RNG calls, which is certainly something I'm lo
 0x081E086C  MOV r0, 0x0
 0x081E086E  POP {pc}
 ...
-0x081E08A4  MOV PC, LR    ; what the actual fuck
+0x081E08A4  MOV pc, lr    ; what the actual fuck
 ```
 
 I'd also like to point out that there's a single instruction multiply limited to 34 cycles (with early termination) that could be used for random ranges.  But instead they chose to actually do remainders and implement in a super inefficient way...
@@ -633,6 +645,25 @@ I'd also like to point out that there's a single instruction multiply limited to
 ```
 ; The dream random range function:
 0x00  BL 0x0x08040EA4
-0x04  MOV r1, <data>
+0x04  MOV r1, <max>
 0x06  MUL r0, r1
 0x08  LSR r0, r0, #0x10
+```
+
+I'll call 0x080FA760 "SetPotentialFID".  Takes in address in r0 and writes a potential fid to the top half word, and some curated RNG in the bottom half word.
+
+To take stock, the memory map before SwampMem should look like:
+
+```
+     15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0
+0x00  ?  ?  A  A  A  A A A A R B B B B B B
+0x02 FID
+0x04  0  0  0  1  0  1 0 X X X X X X X X X
+0x06  0  0  0  1  1  0 N Y Y Y Y Y Y Y Y Y
+```
+
+Where R is a random bit, A is a random number in [0x1E, 0x80) (weighted low), B is a random number in [0x0, 0x80), X is 0x083DE158[0xA][rng(0,0x083DF072[0xA])], Y is the same thing with 0xA replace by either 0xC or 0xD (depending on N, a known bit).
+
+This is repeated 5 times.  RNG is called 7-9 times, FID being the last call.  So overall I should expect between 7 and 45 RNG calls betwee SID and FID. Hmmm....One time I saw 43... And one time I saw only 10, so that fits the bill.
+
+I'm going to code something up that generates this memory map.  Then I can at least experiment with what the starting RNG call is for some of these (in case more are burned before this starts).  After this I'll try to understand the SwapMem (especially ShouldSwap) better.
