@@ -57,7 +57,23 @@ Initial Seed | FID | Calls to FID
 
 So it actually seems very stable around the seed.  I wonder if there's some kind of rejection sampling happening here?
 
-## FID generation
+## FID generation conclusion
+
+FID generation is the most devilishly brilliant thing I've seen done with RNG.
+
+The game generates 5 candidate FIDs.  These candidates contain both the seed and 16 bits with 2 separate randomly generated values used for sorting FIDs (placing the winning FID in the first slot).  During the generation of this comparison value, the game generates a variable number of random numbers based on its pseudo-random number generator.
+
+This is super simple and easy to emulate and predict.  But there's a catch.
+
+60 times a second, the GBA signals an interrupt to the CPU to execute the "VBlank" routine.  This is generally used to tell games that it's okay to write to VRAM to update the sprites on screen.  Pokemon does that, but also uses this as an opprtunity to advance the games RNG once.
+
+Ordinarily this wouldn't be a problem.  The ARM7TDMI is running at 16.78 MHz, so can execute 280,000 instructions between VBlank events.  The FID generation routine takes around 10,000 instructions.
+
+But FID generation doesn't run at the start of the frame.  It runs very close to the end of the frame.  In fact, it appears designed so that the VBlank routine occuers most frequently during the 2nd candidate, right as it's using RNG to generate a random number of RNG calls.  That is, exactly when advancing the RNG has the most chaotic effect.
+
+On an emulator it would be possible (though difficult) to tell exactly when the VBlank interrupt will occur and get perfect FID generation results.  On actual hardware, however, I think variations in the CPU clock cycle could easily throw this off by a few instructions.  Basically FID generation is designed to use *actual* randomness in its generation, despite only having a psuedo-random number generator available.
+
+## FID generation (raw notes and deciphering)
 
 FID at address 0x0202850A
 
@@ -188,24 +204,25 @@ So r1, r2, and r9 are all used somewhere in the function, with r0 being an accum
     ; increment outer loop counter (r2 holds increment counter at branch, and 0 at entry)
 0x080FA4AA  LSL r0, r1, #0x10
 0x080FA4AC  LSR r5, r0, #0x10  ; r5 = bottom 16 of r1
-    ; r5 is inner loop counter, initialized to outer loop counter
+    ; r5 is inner loop counter, initialized to outer loop counter + 1
 0x080FA4AE  MOV r8, r1         ; r8 = r1
     ; r8 stores outer loop counter
 0x080FA4B0  CMP r5, r7
 0x080FA4B2  BCS $080FA4EA      ; if r5 >= r7 goto 0x080FA4EA (break inner loop)
 0x080FA4B4  LSL r0, r2, #0x03  ; r0 = r2 << 3  or  r0 = 8 * outer_loop_counter
-    ; Shift left 3 aligns this to a 16 bit address!!
+    ; Shift left 3 aligns this to a 64 bit address!!
 0x080FA4B6  MOV r1, r9         ; r1 = r9
 0x080FA4B8  ADD r6, r1, r0     ; r6 = r1 + r0
     ; r9 was an address!  and r0 is using the loop counter to index a place ahead of that!
 0x080FA4BA  LSL r0, r5, #0x03  ; r0 = r5 << 3
+    ; the shift left 3 aligns this to 64 bits of memory, the size of a candidate FID
 0x080FA4BC  MOV r1, r9         ; r1 = r9
 0x080FA4BE  ADD r4, r1, r0     ; r4 = r1 + r0
     ; same thing here but using r5 as the index.
 0x080FA4C0  ADD r0, r4, #0x0   ; r0 = r4
 0x080FA4C2  ADD r1, r6, #0x0   ; r1 = r6
 0x080FA4C4  MOV r2, r10        ; r2 = r10
-0x080FA4C6  BL $080FA690       ; Call function at 0x080FA690
+0x080FA4C6  BL 0x$080FA690       ; Call function at 0x080FA690
 0x080FA4CA  LSL r0, r0, #0x18  ; r0 = only bottom 8 of r0 left in
 0x080FA4CC  CMP r0, #0x0
 0x080FA4CE  BEQ 0x080FA4E0      ; if r0 = 0 goto 0x080FA4E0 (skip the swap but don't break the inner loop)
@@ -216,8 +233,8 @@ Now for the fun part:  trying to make sense of all this.  Something like
 
 ```
 0x080FA48C(r1, r2, uint16_t arr[]) {
-	for (i = 0; i < r7; i++) {
-		for (j = i; j < r7; j++) {
+	for (i = 0; i < 5; i++) {
+		for (j = i + 1; j < 5; j++) {
 			unit8_t r0 = shouldCopy()
 			if (r0 != 0) {
 			  arr[i] = arr[j]
@@ -232,123 +249,7 @@ Those array address (arr[i] and arr[j]) are set into r0 and r1 right before the 
 (I still don't understand the reliance on LSL/LSR.)
 
 ```
-0x080FA690  PUSH {r4,r5,lr}
-0x080FA692  ADD r3, r0, #0x0
-0x080FA694  ADD r5, r1, #0x0
-    ; So r0 and r1 are args.  r3 should be the "lower" address, r5 should be the "higher address"
-		; r3 and r5 are addresses whose data we might want to swap
-0x080FA696  LSL r2, r2, #0x18
-    ; r2 is arg, but no idea what it represents (was an arg in the previous function, too, but unused).
-0x080FA698  LSR r2, r2, #0x18
-0x080FA69A  ADD r0, r2, #0x0      ; r0 = bottom 8 bits of r2
-0x080FA69C  CMP r2, #0x1
-0x080FA69E  BEQ 0x080FA6D6        ; if r2 = 1 goto 0x080FA6D6
-0x080FA6A0  CMP r2, #0x1
-0x080FA6A2  BGT 0x080FA6AA        ; if r2 > 1 goto 0x080FA6AA
-0x080FA6A4  CMP r2, #0x0
-0x080FA6A6  BEQ 0x080FA6B0
-0x080FA6A8  B 0x080FA752
-0x080FA6AA  CMP r2, #0x0
-0x080FA6AC  BEQ 0x080FA702
-0x080FA6AE  B 0x080FA752
-0x080FA6B0  LDRB r0, [r3, #0x0]  ; Load *byte* at r3 + 0
-0x080FA6B2  LSL r1, r0, #0x19
-0x080FA6B4  LDRB r0, [r5, #0x0]
-0x080FA6B6  LSL r0, r0, #0x19
-0x080FA6B8  CMP r1, r0
-0x080FA6BA  BHI 0x080FA74E        ; "Branch if C set and Z clear (unsigned higher)".  Unsighed Higher is like Greater Than but treats the arguments as unsigned.
-0x080FA6BC  CMP r1, r0
-0x080FA6BE  BCC 0x080FA6FE
-0x080FA6C0  LDRH r0, [r3, #0x0]  ; Load *half-word* at r3 + 0
-0x080FA6C2  LSL r3, r0, #0x12
-0x080FA6C4  LDRH r0, [r5, #0x0]
-0x080FA6C6  LSL r2, r0, #0x12
-0x080FA6C8  LSR r1, r3, #0x19
-0x080FA6CA  LSR r0, r2, #0x19
-0x080FA6CC  CMP r1, r0
-0x080FA6CE  BHI 0x080FA74E
-0x080FA6D0  LSR r1, r3, #0x19
-0x080FA6D2  LSR r0, r2, #0x19
-0x080FA6D4  B 0x080FA6FA
-0x080FA6D6  LDRH r0, [r3, #0x0]  ; r0 = bottom 16 bits of *r3
-0x080FA6D8  LSL r4, r0, #0x12    ; r4 = r0 << 18
-0x080FA6DA  LDRH r0, [r5, #0x0]  ; r0 = bottom 16 bits of *r5
-0x080FA6DC  LSL r2, r0, #0x12    ; r2 = r0 << 18
-0x080FA6DE  LSR r1, r4, #0x19    ; r1 = r4 >> 25
-0x080FA6E0  LSR r0, r2, #0x19    ; r0 = r2 >> 25
-    ; so r1 = *r3 >> 7, r0 = *r5 >> 7, which are the addresses we are considering swapping.
-0x080FA6E2  CMP r1, r0
-0x080FA6E4  BHI 0x080FA74E       ; if (r1 > r0) then goto 0x080FA74E
-    ; if the addresses are in different "blocks" of 32 words, return true
-0x080FA6E6  LSR r1, r4, #0x19    ; r1 = r4 >> 25
-0x080FA6E8  LSR r0, r2, #0x19    ; r0 = r2 >> 25
-0x080FA6EA  CMP r1, r0
-0x080FA6EC  BCC 0x080FA6FE       ; if "Unsigned lower" (r1 < r0) goto 0x080FA6FE
-    ; if ((*r3 / 128) < (*r5 / 128)) return 0;
-		; why tho
-0x080FA6EE  LDRB r0, [r3, #0x0]  ; r0 = bottom 8 bits of *r3
-0x080FA6F0  LSL r1, r0, #0x19    ; r1 = r0 << 25
-0x080FA6F2  LDRB r0, [r5, #0x0]  ; r0 = bottom 8 bits of *r5
-0x080FA6F4  LSL r0, r0, #0x19    ; r0 = r0 << 25
-    ; r1 = *r3 << 25, r0 = *r5 << 25
-0x080FA6F6  CMP r1, r0
-0x080FA6F8  BHI 0x080FA74E       ; if (r1 > r0) return true
-    ; if ((*r3 /%) > (*r5 % 128)), return true
-0x080FA6FA  CMP r1, r0
-0x080FA6FC  BCS 0x080FA752       ; if (r1 >= 0) goto calling 0x08040EA4
-    ; really only happens if r1 == r0 (equal position in blocks of 64 words)
-0x080FA6FE  MOV r0, #0x0         ; r0 = 0   (returning false)
-    ; return false
-0x080FA700  B 0x080FA75A         ; goto goto exit (why are there 2 branches??)
-0x080FA702  LDRB r0, [r3, #0x0]
-0x080FA704  LSL r1, r0, #0x19
-0x080FA706  LDRB r0, [r5, #0x0]
-0x080FA708  LSL r0, r0, #0x19
-0x080FA70A  CMP r1, r0
-0x080FA70C  BHI 0x080FA74E
-0x080FA70E  CMP r1, r0
-0x080FA710  BCC 0x080FA6FE
-0x080FA712  LDRH r0, [r3, #0x0]
-0x080FA714  LSL r4, r0, #0x12
-0x080FA716  LDRH r0, [r5, #0x0]
-0x080FA718  LSL r2, r0 #0x12
-0x080FA71A  LSR r1, r4, #0x19
-0x080FA71C  LSR r0, r2, #0x19
-0x080FA71E  CMP r1, r0
-0x080FA720  BHI 0x080FA74E
-0x080FA722  LSR r1, r4, #0x19
-0x080FA724  LSR r0, r2, #0x19
-0x080FA726  CMP r1, r0
-0x080FA728  BCC 0x080FA6FE
-0x080FA72A  LDRH r1, [r3, #0x2]
-0x080FA72C  LDRH r0, [r5, #0x2]
-0x080FA72E  CMP r1, r0
-0x080FA730  BHI 0x080FA74E
-0x080FA732  CMP r1, r0
-0x080FA734  BCC 0x080FA6FE
-0x080FA736  LDRH r1, [r3, #0x4]
-0x080FA738  LDRH r0, [r5, #0x4]
-0x080FA73A  CMP r1, r0
-0x080FA73C  BHI 0x080FA74E
-0x080FA73E  CMP r1, r0
-0x080FA740  BCC 0x080FA6FE
-0x080FA742  LDRH r1, [r3, #0x6]
-0x080FA744  LDRH r0, [r5, #0x6]
-0x080FA746  CMP r1 ,r0
-0x080FA748  BHI 0x080FA74E
-0x080FA74A  CMP r1, r0
-0x080FA74C  BCC 0x080FA6FE
-0x080FA74E  MOV r0, #0x1         ; r0 = 1 (should be read as "success")
-    ; return true
-0x080FA750  B 0x080FA75A         ; goto exit
-0x080FA752  BL 0x08040EA4        ; r0, r1, r2 = AdvanceRNG()
-0x080FA756  MOV r1, #0x1         ; r1 = 1
-    ; AdvanceRNG and return false
-		; why tho, double checked, it's not using this value at all.
-0x080FA758  AND r0, r1           ; r0 = r0 & r1, essentially return false if either r0 or r1 is set
-0x080FA75A  POP {r4,r5}          ; exit
-0x080FA75C  POP {r1}
-0x080FA75E  BX r1
+0x080FA690 is now located at the bottom.
 ```
 
 I'm assuming little endian-ness because that's the default and nothing I'm seeing says it should be different.  Which means a 0 offset half word is taking least significant 16 bits and a 2 offset half word is taking the most significant 16 bits.
@@ -601,10 +502,10 @@ Going up one step. To understand 0x080FA19C there is one more subroutine 0x080FA
 0x080FA7C0  BL 0x081E0920     ; r0 = Remainder(r0, r1)
     ; r0 = RNG % rand[0x1, 0x63)
 0x080FA7C4  ADD r0, #0x1E     ; r0 += 30
-    ; r0 = rand[0, 0x81)
+    ; r0 = rand[0, 0x80)
 0x080FA7C6  MOVE r1, #0x7f
 0x080FA7C8  AND r0, r1        ; take only last 7 bits of r0
-    ; can lose information, but only if r0 = 0x80, which is equivalent to r0 = 0x0.
+    ; shouldn't lose information without this.
 0x080FA7CA  LDRB r2, [r5, #0x0]  ; LOAD BYTE
 0x080FA7CC  MOV r1, #0x80     ; r1 = 0b0100'0000
 0x080FA7CE  NEG r1, r1        ; r1 = 0b1...'1100'0000  ; only 7 bit immediates, I guess?
@@ -662,8 +563,146 @@ To take stock, the memory map before SwampMem should look like:
 0x06  0  0  0  1  1  0 N Y Y Y Y Y Y Y Y Y
 ```
 
-Where R is a random bit, A is a random number in [0x1E, 0x80) (weighted low), B is a random number in [0x0, 0x80), X is 0x083DE158[0xA][rng(0,0x083DF072[0xA])], Y is the same thing with 0xA replace by either 0xC or 0xD (depending on N, a known bit).
+Where R is a random bit, A is a random number in [0x1E, 0x80) (weighted low), B is a random number in [0x0, 0x80), X is rng(0,0x083DE158[0xA]), Y is the same thing with 0xA replace by either 0xC or 0xD (depending on N, another random bit).
 
 This is repeated 5 times.  RNG is called 7-9 times, FID being the last call.  So overall I should expect between 7 and 45 RNG calls betwee SID and FID. Hmmm....One time I saw 43... And one time I saw only 10, so that fits the bill.
 
 I'm going to code something up that generates this memory map.  Then I can at least experiment with what the starting RNG call is for some of these (in case more are burned before this starts).  After this I'll try to understand the SwapMem (especially ShouldSwap) better.
+
+Okay.  I've coded up the algorithm, but there's a problem.  Every 16.743 milliseconds, the game runs a "VBlank" routine (basically on frame advance) which also makes a call to RNG.  That happens right in the middle of FID generation, typically between the frist and second candidate.  It doeesn't happen between a particular set of RNG calls either.  So I either need to predict when it will run, or hope to god the auxillary values aren't that important for FID selection.
+
+I should probably follow up on that last point.  How does the selection algorithm work?  I glossed over it on the first encounter.
+
+```
+0x080FA690  PUSH {r4,r5,lr}
+0x080FA692  ADD r3, r0, #0x0
+0x080FA694  ADD r5, r1, #0x0
+    ; So r0 and r1 are args.  r3 should be the "lower" address, r5 should be the "higher address"
+		; r3 and r5 are addresses of the candidate FIDs we might want to swap
+0x080FA696  LSL r2, r2, #0x18
+    ; r2 is arg, but no idea what it represents (was an arg in the previous function, too, but unused).
+		; It is passed in as 0.
+0x080FA698  LSR r2, r2, #0x18
+0x080FA69A  ADD r0, r2, #0x0
+    ; uint8_t r0 = r2  (0 at start)
+0x080FA69C  CMP r2, #0x1
+0x080FA69E  BEQ 0x080FA6D6        ; if r2 = 1 goto 0x080FA6D6 (never used?)
+0x080FA6A0  CMP r2, #0x1
+0x080FA6A2  BGT 0x080FA6AA        ; if r2 > 1 goto 0x080FA6AA (never used?)
+0x080FA6A4  CMP r2, #0x0
+0x080FA6A6  BEQ 0x080FA6B0        ; if r2 == 0 goto 0x080FA6B0 (start here)
+0x080FA6A8  B 0x080FA752
+0x080FA6AA  CMP r2, #0x0
+0x080FA6AC  BEQ 0x080FA702
+0x080FA6AE  B 0x080FA752
+0x080FA6B0  LDRB r0, [r3, #0x0]  ; Load *byte* at r3 + 0
+    ; first byte is [A R B B B B B B] with the definitions above
+0x080FA6B2  LSL r1, r0, #0x19
+0x080FA6B4  LDRB r0, [r5, #0x0]
+0x080FA6B6  LSL r0, r0, #0x19
+    ; so now r1 is B from the lower candidate and r0 is B from the higher candidate.
+0x080FA6B8  CMP r1, r0
+0x080FA6BA  BHI 0x080FA74E        ; "Branch if C set and Z clear (unsigned higher)".  Unsighed Higher is like Greater Than but treats the arguments as unsigned.
+    ; if B(lower FID) > B(upper FID) return true;
+		; Since this is the first comparison done, it is the most important for understanding FID swaps.
+		; It is also the most influenced by the VBlank >:(
+0x080FA6BC  CMP r1, r0
+0x080FA6BE  BCC 0x080FA6FE
+    ; if B(lower FID) < B(upper FID) return false;
+		; so we only have an issue if the *same* random number got generated.
+		; This also explains why it's so stable.  This is the call right before the FID, so the 2 are almost always a pair.
+		; If a FID happens to have a lower predecessor call, it gets picked a LOT.
+0x080FA6C0  LDRH r0, [r3, #0x0]  ; Load *half-word* at r3 + 0
+0x080FA6C2  LSL r3, r0, #0x12
+0x080FA6C4  LDRH r0, [r5, #0x0]
+0x080FA6C6  LSL r2, r0, #0x12
+0x080FA6C8  LSR r1, r3, #0x19
+0x080FA6CA  LSR r0, r2, #0x19
+    ; r1 = A from lower candidate and r0 = A from upper candidate
+0x080FA6CC  CMP r1, r0
+0x080FA6CE  BHI 0x080FA74E
+    ; if A(lower FID) > A(upper FID) return true;
+0x080FA6D0  LSR r1, r3, #0x19
+0x080FA6D2  LSR r0, r2, #0x19
+0x080FA6D4  B 0x080FA6FA
+    ; if A(lower FID) == A(upper FID) advance rng;  return false in any case.
+0x080FA6D6  LDRH r0, [r3, #0x0]  ; r0 = bottom 16 bits of *r3
+0x080FA6D8  LSL r4, r0, #0x12    ; r4 = r0 << 18
+0x080FA6DA  LDRH r0, [r5, #0x0]  ; r0 = bottom 16 bits of *r5
+0x080FA6DC  LSL r2, r0, #0x12    ; r2 = r0 << 18
+0x080FA6DE  LSR r1, r4, #0x19    ; r1 = r4 >> 25
+0x080FA6E0  LSR r0, r2, #0x19    ; r0 = r2 >> 25
+    ; so r1 = *r3 >> 7, r0 = *r5 >> 7, which are the addresses we are considering swapping.
+0x080FA6E2  CMP r1, r0
+0x080FA6E4  BHI 0x080FA74E       ; if (r1 > r0) then goto 0x080FA74E
+    ; if the addresses are in different "blocks" of 32 words, return true
+0x080FA6E6  LSR r1, r4, #0x19    ; r1 = r4 >> 25
+0x080FA6E8  LSR r0, r2, #0x19    ; r0 = r2 >> 25
+0x080FA6EA  CMP r1, r0
+0x080FA6EC  BCC 0x080FA6FE       ; if "Unsigned lower" (r1 < r0) goto 0x080FA6FE
+    ; if ((*r3 / 128) < (*r5 / 128)) return 0;
+		; why tho
+0x080FA6EE  LDRB r0, [r3, #0x0]  ; r0 = bottom 8 bits of *r3
+0x080FA6F0  LSL r1, r0, #0x19    ; r1 = r0 << 25
+0x080FA6F2  LDRB r0, [r5, #0x0]  ; r0 = bottom 8 bits of *r5
+0x080FA6F4  LSL r0, r0, #0x19    ; r0 = r0 << 25
+    ; r1 = *r3 << 25, r0 = *r5 << 25
+0x080FA6F6  CMP r1, r0
+0x080FA6F8  BHI 0x080FA74E       ; if (r1 > r0) return true
+    ; if ((*r3 /%) > (*r5 % 128)), return true
+0x080FA6FA  CMP r1, r0
+0x080FA6FC  BCS 0x080FA752       ; if (r1 >= 0) goto calling 0x08040EA4
+    ; really only happens if r1 == r0 (equal position in blocks of 64 words)
+0x080FA6FE  MOV r0, #0x0         ; r0 = 0   (returning false)
+    ; return false
+0x080FA700  B 0x080FA75A         ; goto goto exit (why are there 2 branches??)
+0x080FA702  LDRB r0, [r3, #0x0]
+0x080FA704  LSL r1, r0, #0x19
+0x080FA706  LDRB r0, [r5, #0x0]
+0x080FA708  LSL r0, r0, #0x19
+0x080FA70A  CMP r1, r0
+0x080FA70C  BHI 0x080FA74E
+0x080FA70E  CMP r1, r0
+0x080FA710  BCC 0x080FA6FE
+0x080FA712  LDRH r0, [r3, #0x0]
+0x080FA714  LSL r4, r0, #0x12
+0x080FA716  LDRH r0, [r5, #0x0]
+0x080FA718  LSL r2, r0 #0x12
+0x080FA71A  LSR r1, r4, #0x19
+0x080FA71C  LSR r0, r2, #0x19
+0x080FA71E  CMP r1, r0
+0x080FA720  BHI 0x080FA74E
+0x080FA722  LSR r1, r4, #0x19
+0x080FA724  LSR r0, r2, #0x19
+0x080FA726  CMP r1, r0
+0x080FA728  BCC 0x080FA6FE
+0x080FA72A  LDRH r1, [r3, #0x2]
+0x080FA72C  LDRH r0, [r5, #0x2]
+0x080FA72E  CMP r1, r0
+0x080FA730  BHI 0x080FA74E
+0x080FA732  CMP r1, r0
+0x080FA734  BCC 0x080FA6FE
+0x080FA736  LDRH r1, [r3, #0x4]
+0x080FA738  LDRH r0, [r5, #0x4]
+0x080FA73A  CMP r1, r0
+0x080FA73C  BHI 0x080FA74E
+0x080FA73E  CMP r1, r0
+0x080FA740  BCC 0x080FA6FE
+0x080FA742  LDRH r1, [r3, #0x6]
+0x080FA744  LDRH r0, [r5, #0x6]
+0x080FA746  CMP r1 ,r0
+0x080FA748  BHI 0x080FA74E
+0x080FA74A  CMP r1, r0
+0x080FA74C  BCC 0x080FA6FE
+0x080FA74E  MOV r0, #0x1         ; r0 = 1 (should be read as "success")
+    ; return true
+0x080FA750  B 0x080FA75A         ; goto exit
+0x080FA752  BL 0x08040EA4        ; r0, r1, r2 = AdvanceRNG()
+0x080FA756  MOV r1, #0x1         ; r1 = 1
+    ; AdvanceRNG and return false
+		; why tho, double checked, it's not using this value at all.
+0x080FA758  AND r0, r1           ; r0 = r0 & r1, essentially return false if either r0 or r1 is set
+0x080FA75A  POP {r4,r5}          ; exit
+0x080FA75C  POP {r1}
+0x080FA75E  BX r1
+```
