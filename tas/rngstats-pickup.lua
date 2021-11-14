@@ -1,3 +1,7 @@
+-- Author: FractalFusion
+-- Contibutors: 14flash
+--
+-- http://tasvideos.org/3186S.html
 -- http://tasvideos.org/forum/viewtopic.php?t=4101
 -- http://tasvideos.org/forum/viewtopic.php?t=4101&postdays=0&postorder=asc&start=100 me post
 -- http://bulbapedia.bulbagarden.net/wiki/Pok%C3%A9mon_data_structure_in_Generation_III
@@ -25,6 +29,7 @@ local startvalue=0x000083ED
 local indexfind
 local index
 local clr
+local fillColor
 local randvalue
 --local iter
 
@@ -49,6 +54,8 @@ local multspb={
  0x73100000, 0xE6200000, 0xCC400000, 0x98800000,
  0x31000000, 0x62000000, 0xC4000000, 0x88000000,
  0x10000000, 0x20000000, 0x40000000, 0x80000000}
+
+local memoryDomain = "System Bus";
  
 
 --a 32-bit, b bit position, 0 is least significant bit
@@ -76,27 +83,27 @@ function gettop(a)
 end
 
 -- draws a 3x3 square
-function drawsquare(a,b,c)
- gui.box(a,b,a+2,b+2,c)
+function drawsquare(a,b,lineColor,fillColor)
+ gui.drawBox(a,b,a+2,b+2,lineColor,fillColor)
 end
 
 
 while true do
 
  i=0
- cur=memory.readdword(rng)
+ cur=memory.read_u32_le(rng, memoryDomain)
  test=last
- while bit.tohex(cur)~=bit.tohex(test) and i<=100 do
+ while cur~=test and i<=100 do
   test=mult32(test,0x41C64E6D) + 0x6073
   i=i+1
  end
- gui.text(120,20,"Last RNG value: "..bit.tohex(last))
+ gui.text(120,24,string.format("Last RNG value: %x", last))
  last=cur
- gui.text(120,0,"Current RNG value: "..bit.tohex(cur))
+ gui.text(120,0,string.format("Current RNG value: %x", cur))
  if i<=100 then
-  gui.text(120,10,"RNG distance since last: "..i)
+  gui.text(120,12,"RNG distance since last: "..i)
  else
-  gui.text(120,10,"RNG distance since last: >100")
+  gui.text(120,12,"RNG distance since last: >100")
  end
  
  if i>2 and i<=100 then
@@ -116,40 +123,64 @@ while true do
    end
   end
  end
- gui.text(120,30,index)
+ gui.text(120,36,index)
  
  
  test=cur
  gui.text(2,36,"v")
  -- i row j column
+ -- 5th row, 4th column is the first value where a pickup will be generated (for A press on XP gain, does not take into account levels, might take longer for large XP gains).
  for i=0,17,1 do
   for j=0,23,1 do
    if j%2==0 then
-    clr=0xA0A0A0FF
+	  -- A draker gray for values we can't get
+    clr=0xFFA0A0A0
    else
-    clr=0xC0C0C0FF
+	  -- A light gray for values we can get
+    clr=0xFFC0C0C0
    end
    randvalue=gettop(test)
 
-   if randvalue%100>=50 and randvalue%100<=59 then
-    if randvalue%10==0 then
-      clr=0x00C0C0FF
-    else
-      clr=0x00FFFFFF
-    end
+	 if randvalue%10 == 0 then
+	   -- If a Pickup would be generated on this frame, color the box black
+	   clr = 0xFF000000;
+	 end
+	 
+	 local item = randvalue%100;
+	 -- These Item values haven't fully been verified yet.  May need some revising.
+	 if item >= 0 and item <= 29 then
+	   -- Super Potion
+		 fillColor = 0xFF606060;
+	 elseif item >= 30 and item <= 39 then
+	   -- Full Heal
+	   fillColor = 0xFFA0A0A0;
+	 elseif item >= 40 and item <= 49 then
+	   -- Ultra Ball -> Magenta
+	   fillColor = 0xFFFF00FF;
+   elseif item >= 50 and item <= 59 then
+		 -- Rare Candy -> Red
+		 fillColor = 0xFFFF0000;
+	 elseif item >= 60 and item <= 69 then
+	   -- Full Restore -> Green
+		 fillColor = 0xFF00FF00;
+	 elseif item >= 70 and item <= 79 then
+	   -- Revive -> White
+		 fillColor = 0xFFFFFFFF;
+	 elseif item >= 80 and item <= 89 then
+	   -- Nugget -> Black
+		 fillColor = 0xFF000000;
+	 elseif item >= 90 and item <= 94 then
+	   -- Protein -> Blue
+		 fillColor = 0xFF0000FF;
+	 elseif item >= 95 and item <= 98 then
+	   -- PP Up -> Cyan
+	   fillColor = 0xFF00FFFF;
    elseif randvalue%100==99 then
-    if randvalue%10==0 then
-       clr=0x00C000FF
-    else
-       clr=0x00FF00FF
-    end
-   else
-    if randvalue%10==0 then
-     clr=0x0000FFFF
-    end
+	   -- King's Rock -> Yellow
+		 fillColor = 0xFFFFFF00;
    end
 
-   drawsquare(2+4*j,44+4*i, clr)
+   drawsquare(2+4*j,44+4*i, clr, fillColor)
 
    test=mult32(test,0x41C64E6D) + 0x6073
   end
