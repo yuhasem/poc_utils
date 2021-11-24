@@ -34,9 +34,11 @@ MAX_PARTY_SIZE = 6
 
 # Alter this for what you're looking for.
 TO_FIND = {
-    'Rare Candy': 256,
+    'Rare Candy': 10,
     'Protein': 10,
 }
+
+BIG_NUMBER = 1 << 31
 
 
 def PickupReturn(seed, partySize):
@@ -144,8 +146,14 @@ class Node():
             num += max(0, TO_FIND.get(item, 0) - self.items.get(item, 0))
         return math.ceil(num/3)*(LOWEST_RNG_ADVANCES_PER_BATTLE+90) + (num//2)*menuFrames(3)
     
+    def g(self):
+        return self.advances
+
+    def f(self):
+        return self.g() + self.heuristic()
+    
     def __lt__(self, other):
-        return self.heuristic() < other.heuristic()
+        return self.f() < other.f()
 
 
 def copyItems(fromO, toO):
@@ -156,10 +164,20 @@ def menuFrames(n):
     return FRAMES_TO_GET_IN_MENU + n*FRAMES_TO_TAKE_ITEM
 
 
+def hashableInventory(items, partyItems):
+    s = str(partyItems)
+    for item in ['Rare Candy', 'Protein', 'Ultra Ball', 'PP Up', 'Nugget']:
+        s += item + str(items.get(item, 0))
+    return s
+
+
 def main():
     """This does an A* search to find a good battle/menuing chain to get to
     TO_FIND items. It should reutrn something close to optimal, but to keep
     things efficient, the heuristic can be outdone by superb RNG."""
+    # Best g seen for each inventory state.  Used to not explore nodes that we
+    # know can't be good.
+    bestSeen = {}
     pq = []
     heapq.heappush(pq, Node({}, 0, 0, []))
     # TODO: insert first node
@@ -187,7 +205,7 @@ def main():
         party = MAX_PARTY_SIZE - node.partyItems
         # Assuming that if we wait this long, we might as well have gotten
         # another item in between.
-        framesToSearch = 9 * LOWEST_RNG_ADVANCES_PER_BATTLE
+        framesToSearch = 4 * LOWEST_RNG_ADVANCES_PER_BATTLE
 
         steps = 0
         while steps < framesToSearch:
@@ -230,6 +248,18 @@ def main():
                 newActions.append(Action('M', menuFrames(MAX_PARTY_SIZE)))
                 newAdvances += menuFrames(MAX_PARTY_SIZE)
                 newPartyItems = 0
+                
+            # Check if this new node has already been explored at the same or
+            # earlier frame.
+            inv = hashableInventory(newItems, newPartyItems)
+            seen = bestSeen.get(inv, BIG_NUMBER)
+            if newAdvances >= seen:
+                # Note that if we're equal we also abandon this state. Something
+                # else has already investigated from this position (or better) so
+                # we don't need to contine.
+                continue
+            bestSeen[inv] = newAdvances
+
             heapq.heappush(pq, Node(newItems, newPartyItems, newAdvances, newActions))
 
             
