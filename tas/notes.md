@@ -518,7 +518,7 @@ Going up one step. To understand 0x080FA19C there is one more subroutine 0x080FA
 		; *r5 = XXXX'XXXX'XXXX'XXXX'??YY'YYYY'YWZZ'ZZZZ
 		;      RNG (Potential FID)^
 		;  whatever was there before ^
-		;        rand[0x1E,0x80) (weighted low)^
+		;       rand[0x1E,0x80) (weighted low)^
 		;      whatever was there before | RNG ^
 		;    rand[0x0,0x80) (almost perfectly unifrom)^
 0x080FA7DC  POP {r4,r5}
@@ -705,4 +705,248 @@ I should probably follow up on that last point.  How does the selection algorith
 0x080FA75A  POP {r4,r5}          ; exit
 0x080FA75C  POP {r1}
 0x080FA75E  BX r1
+```
+
+## FID prediction
+
+So I know there are 2 words in each FID candidate and that the first word is a comparator and the Feebas Seed, but I don't know what the last word is yet.  I suspect they'd be tied to trendy phrase given the connection between chaning trendy phrase and seed change.  It's also generated as 2 separate 16 bit sections, both of which have similar generation.
+
+1. Let's prove that this is actually the case
+2. Can this be used to predict the seed?  That is, if we know the trendy phrase and the TID, can we use that to work out what the Feebas Seed (and threfore tiles) must be?
+
+Let's see if memory address 0x0202850C or 0x0202850E gets read while talking to NPCs in Dewford.
+
+I set breakpoints for reading both address and they both got hit 2 times every frame, even outside Dewford.  (I hear there's anti-cheat checksumming going on behind the scenes, I wonder if that's involved?).  3 frames after pressing A on a Dewford NPC (1 frame before text screen appears), they both get called 3 times.  That's the frame I should investigate.
+
+My values by the way are 0x1437 and 0x1819 for the mystery word with trendy phrase "ALONE TEST"
+
+I tracelogged the frame with the extra check (since the VBA-next still doesn't have great breakpoint support).
+
+Gets set in r1 around command 0x080FA5EF.  0x1437 gets placed in r1 shortly afterword (0x080EB507).  Appears in r5 around 0x080EB4CB, but that appears to be a return from the previous calls.  Immediately afterword if adds 2 (second mystery bits) and loads 0x1819 into r1.
+
+I don't see any other places where 0x0202850C is in a register, so this looks like the correct place to check out what it's doing.
+
+```
+0x080FA5DC  PUSH {lr}
+0x080FA5DE  LDR r0, [0x080FA5F8] (=0x0202E8CC)
+0x080FA5E0  LDRH r1, [r0, 0x00]    ; r1 = *0x0202E8CC
+	; I'm not familiar with what's in memory here
+0x080FA5E2  LSL r1, r1, 0x03       ; r1 <<= 3
+0x080FA5E4  LDR r0, [0x080FA5FC] (=0x02028508)
+0x080FA5E6  ADD r1, r1, r0         ; r1 = 0x02028508 + 8 * (*0x0202E8CC)
+0x080FA5E8  LDR r0, [0x080FA600] (=0x020231CC)
+0x080FA5EA  ADD r1, 0x04           ; r1 += 4
+  ; If 0x0202E8CC points to a 0, then this makes sense, it would sett r1 to 0x0202850C which
+	; is the memory address we saw.
+	; I wonder if 0x0202E8CC is a pointer to which "candidate" to use, but I don't know why it would need that.
+0x080FA5EC  MOV r2, 0x02           ; r2 = 2
+0x080FA5EE  MOV r3, 0x01           ; r3 = 1
+0x080FA5F0  BL 0x080EB4D4          ; function call
+0x080FA5F4  POP {r0}
+0x080FA5F6  BX r0
+  ; return
+```
+
+My guess would be 0x080EB4D4 is going to get some string data, or pointer to string data.
+
+```
+  ; Args:
+	;   r0 = an address (0x020231CC)
+	;   r1 = ??
+	;   r2 = inner loop limit + 1
+	;   r3 = outer loop limit
+0x080EB4D4  PUSH {r4-r7,lr}
+0x080EB4D6  MOV r7, r9
+0x080EB4D8  MOV r6, r8
+0x080EB4DA  PUSH {r6, r7}
+0x080EB4DC  ADD sp, -0x04         ; stack pointer -= 4 (!?)
+0x080EB4DE  ADD r4, r0, 0x0       ; r4 = r0
+  ; r0 was set to the address 0x020231CC
+0x080EB4E0  ADD r5, r1, 0x0       ; r5 = r1
+  ; r1 was set to the address of the mystery bits
+0x080EB4E2  LSL r2, r2, 0x10
+... ; uint16_t r3;
+0x080EB4E8  MOV r9, r3
+  ; r9 = outer loop limit
+0x080EB4EA  LDR r0, [0x080EB55C] (=0xFFFF0000)
+0x080EB4EC  ADD r2, r2, r0
+0x080EB4EE  LSR r7, r2, 0x10
+  ; r7 = inner loop limit
+	; uint16_t = r2 - 1 (with a way too obtuse way of subtracting 1) (probably to avoid bad stuff around 0 - 1?)
+0x080EB4F0  MOV r0, 0x0
+0x080EB4F2  CMP r0, r9
+0x080EB4F4  BCS 0x080EB544        ; if (0 >= r9) skip outer loop
+  ; skip outer loop if the counter was 0
+0x080EB4F6  MOV r6, 0x0           ; r6 = 0
+0x080EB4F8  ADD r0, 0x1           ; r0 += 1
+0x080EB4FA  MOV r8, r0            ; r8 = r0
+0x080EB4FC  CMP r6, r7
+0x080EB4FE  BCS 0x080EB528        ; if (0 >= r7) skip inner loop
+  ; skip inner loop if the counter was 0
+0x080EB500  LDR r2, [0x080EB560] (=0x0000FFFF)
+0x080EB502  LDRH r1, [r5, 0x0]    ; Load the 16 bits at r5 into r1 (the top mystery bits in our case)
+0x080EB504  ADD r0, r4, 0x0       ; r0 = r4
+0x080EB506  STR r2, [sp, 0x0]     ; store r2 on the stack
+0x080EB508  BL 0x080EB41C         ; function call
+0x080EB50C  ADD r4, r0, 0x0       ; r4 = r0
+0x080EB50E  LDRH r0, [r5, 0x0]    ; Load the 16 bits at r5 into r0
+0x080EB510  LDR r2, [sp, 0x0]     ; load r2 from the stack
+  ; So it looks like we're using the stack to store some data temporarily.
+	; Are we really out of working memory?  Or does the function call use this data too somehow?
+0x080EB512  CMP r0, r2
+0x080EB514  BEQ 0x080EB51C        ; if (r0 == r2) skip a few instructions ahead
+0x080EB516  MOV r0, 0x0           ; r0 = 0
+0x080EB518  STRB r0, [r4, 0x0]    ; *r4 = 0
+0x080EB51A  ADD r4, 0x1           ; r4++
+0x080EB51C  ADD r5, 0x2           ; r5 += 2
+0x080EB51E  ADD r0, r6, 0x1
+... uint16_t r6 = r0              ; r6++
+0x080EB524  CMP r6, r7
+0x080EB526  BCC 0x080EB502        ; if (r6 < r7) continue inner loop
+  ; next inner loop         
+0x080EB528  LDRH r1, [r5, 0x0]    ; Load the 16 bits from r5 into r1
+0x080EB52A  ADD r5, 0x2           ; r5 += 2
+0x080EB52C  ADD r0, r4, 0x0       ; r0 = r4
+0x080EB52E  BL 0x080EB41C         ; function call
+0x080EB532  ADD r4, r0, 0x0       ; r4 = r0
+0x080EB534  MOV r0, 0xFE          ; r0 = 0xFE
+0x080EB536  STRB r0, [r4, 0x0]    ; *r4 = 0xFE
+0x080EB538  ADD r4, 0x1           ; r4++
+0x080EB53A  MOV r1, r8
+... uint16_t r0 = r1              ; r0 = r8
+0x080EB540  CMP r0, r9
+0x080EB542  BCC 0x080EB4F6        ; if (r0 < r9) continue inner loop
+  ; next outer loop
+0x080EB544  SUB r4, 0x1           ; r4--
+0x080EB546  MOV r0, 0xFF          ; r0 = 0xFF
+0x080EB548  STRB r0, [r4, 0x0]    ; *r4 = 0xFF
+0x080EB54A  ADD r0, r4, 0x0       ; r0 = r4
+0x080EB54C  ADD sp, 0x4           ; undo stack pointer manipulation above
+0x080EB54E  POP {r3, r4}
+0x080EB550  MOV r8, r3
+0x080EB552  MOV r9, r4
+0x080EB554  POP {r4-r7}
+0x080EB556  POP {r1}
+0x080EB558  BX r1
+  ; return
+```
+
+```
+  ; Args:
+	;   r0 = an address (0x020231CC)
+	;   r1 = the mystery bits
+0x080EB41C  PUSH {r4-r7,lr}
+0x080EB42E  ADD r5, r0, 0x0   ; r5 = r0 (r5 now holds the address 0x020231CC)
+0x080EB420  LSL r6, r1, 0x10
+  ; r6 holds the mystery bits shifted 16 bits left, which actually matters later
+0x080EB422  LSR r4, r6, 0x10
+  ; uint16_t r4 = r1
+0x080EB424  ADD r7, r4, 0x0
+0x080EB426  ADD r0, r4, 0x0   ; r4 gets moved into both r7 and r0 (r0 probably arg for next call)
+ ; r0, r1, r4, and r7 are all holding the mystery bits at this point
+0x080EB428  BL 0x080EB39C
+0x080EB42C  LSL r0, r0, 0x18
+0x080EB42E  CMP r0, 0x0       ; essentially checking if the last 8 bits of r0 are 0 (uint8_t r0 == 0)
+0x080EB430  BEQ 0x080EB440
+0x080EB432  LDR r1, [0x080EB4EC] (=0x0842C904)
+  ; if (r0 != 0) then r1 = 0x0842C904
+	; Around this memory address:
+	;   0xAC 0xAC 0xAC 0xFF
+	; So it would copy 3 0xAC bytes into 0x020231CC.  I wonder if that's code point for '?'.  Not ASCII at any rate.
+0x080EB434  ADD r0, r5, 0x0   ; r0 = 0x020231CC for this next function call
+0x080EB436  BL 0x08006AB0     ; CopyBytes(into r0, from r1)
+0x080EB43A  B 0x080EB4C6
+  ; return
+... data
+0x080EB440  LDR r0, [0x080EB45C] (=0x0000FFFF)
+  ; if (r0 == 0) then r0 = 0xFFFF
+0x080EB442  CMP r4, r0
+0x080EB444  BEQ 0x080EB4C0    ; Is 0x080EB39C or 0x08006AB0 modifying r4?
+                              ; If not this is checking that r0 = mystery bits or not
+															; If equal then exit.  Otherwise continue.
+0x080EB446  LSR r1, r6, 0x19  ; r1 is now the index from the mystery bits
+  ; relevant indecies are 0xA, 0xC, and 0xD
+0x080EB448  LDR r2, [0x080EB460] (=0x000001FF)
+  ; 0x01FF is a mask for the non-index portion of the mystery bits!
+0x080EB44A  AND r2, r7        ; r7 probably still holding the mystery bits, so r2 is now the non-index portion
+0x080EB44C  CMP r1, 0x13
+0x080EB44E  BGT 0x080EB464
+0x080EB450  CMP r1, 0x12
+0x080EB452  BGE 0x080EB478
+0x080EB454  CMP r1, 0x0
+0x080EB456  BEQ 0x080EB468
+0x080EB458  B 0x080EB488      ; This is the relevant branch
+... data
+0x080EB464  CMP r1, 0x15
+0x080EB466  BNE 0x080EB488
+0x080EB468  MOV r0, 0xB
+0x080EB46A  ADD r1, r2, 0x0
+0x080EB46C  MUL r1, r0
+0x080EB46E  LDR r0, [0x080EB474] (=0x81F7114)
+0x080EB470  ADD r1, r1, r0
+0x080EB472  B 0x080EB4B8
+... data
+0x080EB478  MOV r0, 0xD  ; 0XD = emoticon for angel laughing its ass off
+0x080EB47A  ADD r1, r2, 0x0
+0x080EB47C  MUL r1, r0
+0x080EB47E  LDR r0, [0x080EB484] (=0x081F82C8)
+0x080EB480  ADD r1, r1, r0
+0x080EB482  B 0x080EB4B8
+... data
+  ; RELEVANT BRANCH HERE
+0x080EB488  LDR r0, [0x080EB4CC] (0x083DE158)   ; r0 = 0x083DE158
+  ; This is the list that holds the max number for each index.
+0x080EB48A  LSL r1, r1, 0x02                    ; r1 *= 4 (makes it a offset in the 0x083DE158 array)
+0x080EB48C  ADD r1, r1, r0     ; r1 = address of max number for our non-index mystery bits
+0x080EB48E  LDR r1, [r1, 0x0]  ; r1 = max number for out lower end mystery bits
+  ; 0xA -> 0x083DD0F5 -> r1 = 0xFFCEC9C2 (wait, how the hell does a word load work when the address isn't word aligned?) (This address doesn't make sense.  It's pointing into the stack not a ROM bank)
+	; 0xC -> 0x083DD4E0 -> r1 = 0xCCC9C2BD
+	; 0xD -> 0x083DD629 -> r1 = 0xC6C9BEC3
+	; none of these addresses have data ??
+0x080EB490  SUB r0, r2, 0x1    ; r0 = r2 - 1.  (r2 was the non-index portion of the mystery bits)
+... uint16_t r2 = r2 - 1
+0x080EB496  LDR r0, [0x080EB4D0] (0x0000FFFF)  ; r0 = 0xFFFF
+0x080EB498  CMP r2, r0
+0x080EB49A  BEQ 0x080EB4B8     ; if r2 == -1 (i.e. if the non-index mystery bits were 0 originally)
+0x080EB49C  ADD r3, r0, 0x0    ; r3 = 0xFFFF
+  ; LOOP STARTS AFTER HERE
+0x080EB49E  LDRB r0, [r1, 0x0] ; r0 = byte at r1.  (r1 is an address from the address of the max number of bits).
+0x080EB4A0  ADD r1, 0x1        ; r1++
+0x080EB4A2  SUB r2, 0x1        ; r2--
+0x080EB4A4  CMP r0, 0xFF
+0x080EB4A6  BEQ 0x080EB4B0     ; if r0 = 0xFF 
+0x080EB4A8  LDRB r0, [r1, 0x0]
+0x080EB4AA  ADD r1, 0x1
+0x080EB4AC  CMP r0, 0xFF
+0x080EB4AE  BNE 0x080EB4A8
+0x080EB4B0  LSL r0, r2, 0x10
+0x080EB4B2  LSR r2, r0, 0x10
+0x080EB4B4  CMP r2, r3
+0x080EB4B6  BNE 0x080EB49E
+0x080EB4B8  ADD r0, r5, 0x0   ; can branch to this to exit
+  ; r0 = 0x020231CC
+0x080EB4BA  BL 0x08006AB0     ; CopyBytes(into r0, from r1)
+0x080EB4BE  ADD r5, r0, 0x0
+0x080EB4C0  MOV r0, 0xFF
+0x080EB4C2  STRB r0, [r5, 0x0]
+0x080EB4C4  ADD r0, r5, 0x0
+0x080EB4C6  POP {r4-r7}
+0x080EB4C8  POP {r1}
+0x080EB4CA  BX r1
+```
+
+```
+CopyBytes(into r0, from r1)
+  Args:
+	  r0 = an address that we're writing to.
+		r1 = an address that we're reading from.
+	
+	Reads bytes from r1 (incrementing pointer after each read) and copies them into r0.
+	Terminates after copying an 0xFF into r0.
+0x08006AB0  ; short and rather unintersting, so leaving out for brevity
+```
+
+```
+  ; Called before any copy, so might be relevant.
+0x080EB39C
 ```
