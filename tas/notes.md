@@ -437,7 +437,7 @@ Large, but mostly seems to be delegating logic.  Based on what I know, 0x080EB74
 		; r0 = 0b0000'0000'0000'0000'xxxx'xxxy'yyyy'yyyy
 		;                           from r4 ^  from r2 ^
 		; r4 being the index, r2 being a number loaded from an array with random index.
-		; r2 = 0x083DE158[index][rng(0,0x083DF071[index])]
+		; r2 = 0x083DE158[index][rng(0,0x083DF072[index])]
 		; The sizes I've seen are all less than 512, so there's no information loss here.
 0x080EB792  POP {r4}
 0x080EB794  POP {r1}
@@ -844,10 +844,10 @@ My guess would be 0x080EB4D4 is going to get some string data, or pointer to str
 0x080EB424  ADD r7, r4, 0x0
 0x080EB426  ADD r0, r4, 0x0   ; r4 gets moved into both r7 and r0 (r0 probably arg for next call)
  ; r0, r1, r4, and r7 are all holding the mystery bits at this point
-0x080EB428  BL 0x080EB39C
+0x080EB428  BL 0x080EB39C     ; ValidateWord(r0)
 0x080EB42C  LSL r0, r0, 0x18
 0x080EB42E  CMP r0, 0x0       ; essentially checking if the last 8 bits of r0 are 0 (uint8_t r0 == 0)
-0x080EB430  BEQ 0x080EB440
+0x080EB430  BEQ 0x080EB440    ; if word is valid, go here.
 0x080EB432  LDR r1, [0x080EB4EC] (=0x0842C904)
   ; if (r0 != 0) then r1 = 0x0842C904
 	; Around this memory address:
@@ -861,9 +861,7 @@ My guess would be 0x080EB4D4 is going to get some string data, or pointer to str
 0x080EB440  LDR r0, [0x080EB45C] (=0x0000FFFF)
   ; if (r0 == 0) then r0 = 0xFFFF
 0x080EB442  CMP r4, r0
-0x080EB444  BEQ 0x080EB4C0    ; Is 0x080EB39C or 0x08006AB0 modifying r4?
-                              ; If not this is checking that r0 = mystery bits or not
-															; If equal then exit.  Otherwise continue.
+0x080EB444  BEQ 0x080EB4C0    ; If "mystery bits" == 0xFFFF, goto exit.
 0x080EB446  LSR r1, r6, 0x19  ; r1 is now the index from the mystery bits
   ; relevant indecies are 0xA, 0xC, and 0xD
 0x080EB448  LDR r2, [0x080EB460] (=0x000001FF)
@@ -895,19 +893,20 @@ My guess would be 0x080EB4D4 is going to get some string data, or pointer to str
 ... data
   ; RELEVANT BRANCH HERE
 0x080EB488  LDR r0, [0x080EB4CC] (0x083DE158)   ; r0 = 0x083DE158
-  ; This is the list that holds the max number for each index.
+  ; This is a list (is it the same one used to constuct? -> no)
 0x080EB48A  LSL r1, r1, 0x02                    ; r1 *= 4 (makes it a offset in the 0x083DE158 array)
-0x080EB48C  ADD r1, r1, r0     ; r1 = address of max number for our non-index mystery bits
-0x080EB48E  LDR r1, [r1, 0x0]  ; r1 = max number for out lower end mystery bits
-  ; 0xA -> 0x083DD0F5 -> r1 = 0xFFCEC9C2 (wait, how the hell does a word load work when the address isn't word aligned?) (This address doesn't make sense.  It's pointing into the stack not a ROM bank)
-	; 0xC -> 0x083DD4E0 -> r1 = 0xCCC9C2BD
-	; 0xD -> 0x083DD629 -> r1 = 0xC6C9BEC3
+0x080EB48C  ADD r1, r1, r0     ; r1 = address of ?? corresponding to the index of mystery bits
+0x080EB48E  LDR r1, [r1, 0x0]  ; r1 = a word obtained from 0x083DE158[index]
+  ; 0xA -> r1 = 0x083DD0F5
+	; 0xC -> r1 = 0x083DD4E0
+	; 0xD -> r1 = 0x083DD629
 	; none of these addresses have data ??
 0x080EB490  SUB r0, r2, 0x1    ; r0 = r2 - 1.  (r2 was the non-index portion of the mystery bits)
 ... uint16_t r2 = r2 - 1
 0x080EB496  LDR r0, [0x080EB4D0] (0x0000FFFF)  ; r0 = 0xFFFF
 0x080EB498  CMP r2, r0
 0x080EB49A  BEQ 0x080EB4B8     ; if r2 == -1 (i.e. if the non-index mystery bits were 0 originally)
+  ; if non-index mystery bits are 0, copy immediately.
 0x080EB49C  ADD r3, r0, 0x0    ; r3 = 0xFFFF
   ; LOOP STARTS AFTER HERE
 0x080EB49E  LDRB r0, [r1, 0x0] ; r0 = byte at r1.  (r1 is an address from the address of the max number of bits).
@@ -923,9 +922,13 @@ My guess would be 0x080EB4D4 is going to get some string data, or pointer to str
 0x080EB4B2  LSR r2, r0, 0x10
 0x080EB4B4  CMP r2, r3
 0x080EB4B6  BNE 0x080EB49E
+  ; The above code is going through ALL of the words (seperated by 0xFF) to find the one indexed by r2.
+	; It does this by reading the 0xFF, adding 1 to r1, substracting 1 from r2, and then looping until it sees a 0xFF.
+	; Once r2 == -1, they know they've hit the one they want (r2 starts 1 less than the non-index mystery bits).
 0x080EB4B8  ADD r0, r5, 0x0   ; can branch to this to exit
   ; r0 = 0x020231CC
 0x080EB4BA  BL 0x08006AB0     ; CopyBytes(into r0, from r1)
+  ; So the r2^th word from the list at 0x083DD0F5, 0x083DD4E0, or 0x083DD629 gets copied into 0x020231CC
 0x080EB4BE  ADD r5, r0, 0x0
 0x080EB4C0  MOV r0, 0xFF
 0x080EB4C2  STRB r0, [r5, 0x0]
@@ -934,6 +937,45 @@ My guess would be 0x080EB4D4 is going to get some string data, or pointer to str
 0x080EB4C8  POP {r1}
 0x080EB4CA  BX r1
 ```
+
+0x83DD0F5: C2, C9, CE, FF, BF, D2, C3, CD, CE, CD, FF, ...
+
+What if it's ascii but the upper bit set to 1 (for some reason)?
+
+B I N _ ? Q C M N M _ 
+
+Well that doesn't look right...
+
+My trendy phrase has changed to "PREPOSTEROUS SONG"...
+
+"PREPOSTEROUS" and "ALONE" are both part of the "CONDITIONS" list...which is the 10th one from the top (0xA).  "SONG" is part of the "HOBBIES" list which is 13th (0xD) and "TEST" is part of the "LIFESTYLE" list which is 12th (0xC).  That's a great match to lead us in the right direction.
+
+Now unfortunately the "CONDITIONS" list starts "ABESNT", "ALONE", "AMUSING" which does not match with the data I was just reading above (length or letter matches).
+
+My seeds for ALONE TEST were 0x1437 and 0x1819.  My values for PREPOSTEROUS SONG were 0x142E and 0x1A02
+
+```
+0x1437 = 0b[0001'010][0'0011'0111]
+        index (0xA) ^
+               position (dec 55) ^
+0x1819 = 0b[0001'100][0'0001'1001]
+        index (0xC) ^
+               position (dec 25) ^
+0x142E = 0b[0001'010][0'0010'1110]
+        index (0xA) ^
+               position (dec 46) ^
+0x1A02 = 0b[0001'101][0'0000'0010]
+        index (0xD) ^
+               position (dec 2) ^
+```
+
+List 10 should have a max of 0x45 = dec 69, so this isn't simply in reverse order either.  It's legitamately unordered and must get reordered when inputting a new one (I'm only mildly terrified at this).
+
+0x083DD629 : C3 BE C9 C6 FF BB C8 C3 C7 BF FF CD C9 C8 C1 FF C7 C9 D0 C3 BF FF ...
+
+So CD C9 C8 C1 FF shound by S O N G _
+
+Cool, they're ordered like the alphabet then.  Then the 12th list starts IDOL_ANIME_SONG_MOVIE_...
 
 ```
 CopyBytes(into r0, from r1)
@@ -948,5 +990,60 @@ CopyBytes(into r0, from r1)
 
 ```
   ; Called before any copy, so might be relevant.
-0x080EB39C
+ValidateWord(uint16_t word (r0))
+	Args:
+	  r0 = mystery bits
+	Returns:
+	  r0 = 0 if word is valid, 1 otherwise.
+0x080EB39C  PUSH {r4,r5,lr}
+0x080EB39E  LSL r1, r0, 0x10
+0x080EB3A0  LSR r3, r1, 0x10
+0x080EB3A2  LDR r0, [0x080EB3C0] (=0x0000FFFF)
+0x080EB3A4  CMP r3, r0
+0x080EB3A6  BEQ 0x080EB40A
+0x080EB3A8  LSR r2, r1, 0x19
+  ; r2 = index bits of r0
+0x080EB3AA  LDR r5, [0x080EB3C4] (=0x000001FF)
+0x080EB3AC  AND r5, r3
+  ; r5 = non-index bits of r0
+0x080EB3AE  CMP r2, 0x15
+0x080EB3B0  BHI 0x080EB414
+0x080EB3B2  CMP r2, 0x13
+0x080EB3B4  BGT 0x080EB3C8
+0x080EB3B6  CMP r2, 0x12
+0x080EB3B8  BGE 0x080EB3CC
+0x080EB3BA  CMP r2, 0x0
+0x080EB3BC  BEQ 0x080EB3CC
+0x080EB3BE  B 0x080EB400
+... data
+0x080EB3C8  ; there's a branch to here
+... truncated irrelevant bits
+  ; RELEVANT BIT STARTS BELOW HERE
+0x080EB400  LDR r0, [0x080EB410] (=0x083DF072)
+  ; 0x083DF072 is a list (is it the same one used to constuct?)
+0x080EB402  ADD r0, r2, r0
+  ; r2 is index from mystery bits
+0x080EB404  LDRB r0, [r0, 0x0]
+	; 0xA -> r0 = 0x45
+	; 0xC -> r0 = 0x2D
+	; 0xD -> r0 = 0x36
+0x080EB406  CMP r5, r0
+0x080EB408  BCS 0x080EB414     ; if r5 >= r0 goto exit-ish
+  ; If r5 >= r0, then the non-index portion of the mystery bits is invalid, since that's the
+	; maximum number it should be.
+	; I think this entire function is checking the validity of the mystery bits.
+0x080EB40A  MOV r0, 0x0        ; r0 = 0
+0x080EB40C  B 0x080EB416
+0x080EB40E  LSL r0, r0, 0x0    ; nop
+0x080EB410  BL 0x0815D48E      ; never executed in our path.
+0x080EB414  MOV r0, 0x1
+  ; bool ret = false;
+	; if (r5 >= r0) {
+	;   ret = true;
+	; }
+0x080EB416  POP {r4, r5}
+0x080EB418  POP {r1}
+0x080EB41A  BX r1
 ```
+
+
