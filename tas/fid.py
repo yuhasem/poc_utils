@@ -17,10 +17,12 @@ MAX_NUMBERS = [0,0,0,0,0,0,0,0,0,0,0x45,0,0x2D,0x36]
 
 class Candidate():
     
-    def __init__(self, halfWord1, FID):
+    def __init__(self, halfWord1, FID, trendy1, trendy2):
         # Half word 3 and 4 unused
         self.swapper = halfWord1
         self.FID = FID
+        self.firstTrendyWord = trendy1
+        self.secondTrendyWord = trendy2
         
     def __lt__(self, other):
         if (self.swapper & 0x3F) == (other.swapper & 0x3F):
@@ -31,7 +33,8 @@ class Candidate():
         return '{FID:X} with lower swap {swap}'.format(FID=self.FID, swap=(self.swapper & 0x3F))
         
 
-def getIndexAndRandomResult(seed, index):
+def getTrendyWord(seed, index):
+    "The half-word which describes a word to put in the trendy phrase."
     max_num = MAX_NUMBERS[index]
     seed = rng.advanceRng(seed, 1)
     value = rng.top(seed) % max_num
@@ -39,20 +42,23 @@ def getIndexAndRandomResult(seed, index):
     result = value & 0x1FF
     return (seed, index | result)
 
-def getSuperRandomHalfWord(seed):
-    """No, I legitimately don't have a better name for this function."""
+def getComparator(seed, injectVblank):
+    """The half-word which is used to compare candidates."""
     # I have no idea why this individual bit needs it's own RNG call.
     seed = rng.advanceRng(seed, 1)
     halfword = 0 if rng.top(seed) & 1 == 0 else 0x40
     
-    # vblank happening here on 2nd iteration.  Does that always happen?
-    # No...another call had it happen between third and fourth half word...
-
+    if injectVblank == 4:
+        seed = rng.advanceRng(seed, 1)
     # This is how is makes a variable number of RNG calls.
     seed = rng.advanceRng(seed, 1)
     if rng.top(seed) % 0x62 > 0x32:
+        if injectVblank == 5:
+            seed = rng.advanceRng(seed, 1)
         seed = rng.advanceRng(seed, 1)
         if rng.top(seed) % 0x62 > 0x50:
+            if injectVblank == 6:
+                seed = rng.advanceRng(seed, 1)
             seed = rng.advanceRng(seed, 1)
     rand = rng.top(seed) % 0x62
     top7 = rand + 0x1E
@@ -61,6 +67,8 @@ def getSuperRandomHalfWord(seed):
     top7 <<= 7
     halfword |= top7
     
+    if injectVblank == 7:
+        rng.advanceRng(seed, 1)
     seed = rng.advanceRng(seed, 1)
     # You thought variable number of RNG calls was weird, now we're doing a
     # random number between 0 and a random number.
@@ -73,24 +81,33 @@ def getSuperRandomHalfWord(seed):
     # fully understand why it's needed.
     return (seed, halfword)
 
-def generateCandidateFID(seed, iteration):
-    seed, thirdHalfWord = getIndexAndRandomResult(seed, 0xA)
+def generateCandidateFID(seed, injectVblank=-1):
+    """Generates a full CandidateFID at the given seed, injecting an extra
+    RNG advancement at the index given by injectVblank.
+    
+    Args:
+        seed: the starting seed to generate from.
+        injectVblank: optional.  Where to inject an extra rng advancement.
+          Valid values are 0 to 8 inclusive."""
+    if injectVblank == 0:
+        seed = rng.advanceRng(seed, 1)
+    seed, firstTrendyWord = getTrendyWord(seed, 0xA)
 
+    if injectVblank == 1:
+        seed = rng.advanceRng(seed, 1)
     seed = rng.advanceRng(seed, 1)
     nextIndex = 0xD if rng.top(seed) & 1 == 0 else 0xC
-    seed, fourthHalfWord = getIndexAndRandomResult(seed, nextIndex)
-
-    if iteration == 1:
-        # This is an attempt to mimic the VBlank.  It's actually most likely
-        # to occur during the RNG of RNG calls during the firsHalfWord call,
-        # which is also the most entropic.
-        #
-        # We would need a really good prediction to do this accurately...it's
-        # probably impossible to predict on real hardware.
+    
+    if injectVblank == 2:
         seed = rng.advanceRng(seed, 1)
+    seed, secondTrendyWord = getTrendyWord(seed, nextIndex)
+
+    if injectVblank == 3:
+        seed = rng.advanceRng(seed, 1)
+    seed, comparator = getComparator(seed, injectVblank)
     
-    seed, firstHalfWord = getSuperRandomHalfWord(seed)
-    
+    if injectVblank == 8:
+        seed = rng.advanceRng(seed, 1)
     seed = rng.advanceRng(seed, 1)
     FID = rng.top(seed)
     
@@ -99,13 +116,14 @@ def generateCandidateFID(seed, iteration):
     # print("\t%x" % thirdHalfWord)
     # print("\t%x" % fourthHalfWord)
     
-    return seed, Candidate(firstHalfWord, FID)
+    return seed, Candidate(comparator, FID, firstTrendyWord, secondTrendyWord)
 
 def generateFID(seed):
     candidateFIDs = []
     for i in range(5):
         # print("Candidate FID %d:" % i)
-        seed, candidate = generateCandidateFID(seed, i)
+        inject = 3 if i == 1 else -1
+        seed, candidate = generateCandidateFID(seed, inject)
         candidateFIDs.append(candidate)
     for candidate in candidateFIDs:
        print(candidate)
