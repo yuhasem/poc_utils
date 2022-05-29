@@ -43,14 +43,46 @@ def advanceRng(seed, steps):
             break
     return seed
 
-class Pokemon():
+class StaticPokemon():
 
     def __init__(self, seed):
-        seed = advanceRng(seed, 1)
+        # The first step is the usual VBlank
+        seed = advanceRng(seed, 2)
         pid = top(seed)
         seed = advanceRng(seed, 1)
         pid += top(seed) << 16
         self.nature = pid % 25;
+        
+        seed = advanceRng(seed, 1)
+        ivs = top(seed)
+        self.hp_iv = ivs & 0x1F
+        ivs >>= 5
+        self.att_iv = ivs & 0x1F
+        ivs >>= 5
+        self.def_iv = ivs & 0x1F
+        
+        seed = advanceRng(seed, 1)
+        ivs = top(seed)
+        self.spe_iv = ivs & 0x1F
+        ivs >>= 5
+        self.spa_iv = ivs & 0x1F
+        ivs >>= 5
+        self.spd_iv = ivs & 0x1F
+        
+class WallyRaltsPokemon():
+    
+    def __init__(self, seed):
+        # VBlank + 2 steps to generate TID (which we don't track)
+        seed = advanceRng(seed, 3)
+        male = False
+        while not male:
+            pid = 0
+            seed = advanceRng(seed, 1)
+            pid = top(seed)
+            seed = advanceRng(seed, 1)
+            pid += top(seed) << 16
+            male = ((pid & 0xf0) >> 4) > 7
+        self.nature = pid % 25
         
         seed = advanceRng(seed, 1)
         ivs = top(seed)
@@ -81,9 +113,9 @@ def feebasTilesFromSeed(seed):
             tiles.append(tile)
     return tiles
 
-def rareCandies(seed):
+def rareCandies(seed, size=6):
     candies = 0
-    for i in range(6):
+    for i in range(size):
       seed = advanceRng(seed, 1)
       if (top(seed) % 10 != 0):
           continue

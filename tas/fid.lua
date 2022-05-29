@@ -11,7 +11,7 @@
 local maxFramesToWait = 120;
 -- The save slot to use while searching.  Change this if you don't want this
 -- slot to be overwritten.
-local saveSlot = 9;
+local saveSlot = 0;
 
 local memoryDomain = "EWRAM";
 local TIDAddress = 0x024EAE;
@@ -56,6 +56,153 @@ function feebasTiles(seed)
 	return tiles;
 end
 
+local wantedTiles = {};
+wantedTiles[99] = true;
+wantedTiles[100] = true;
+wantedTiles[101] = true;
+wantedTiles[102] = true;
+wantedTiles[103] = true;
+wantedTiles[104] = true;
+wantedTiles[111] = true;
+wantedTiles[112] = true;
+wantedTiles[113] = true;
+wantedTiles[114] = true;
+wantedTiles[115] = true;
+wantedTiles[115] = true;
+wantedTiles[116] = true;
+wantedTiles[117] = true;
+wantedTiles[118] = true;
+wantedTiles[124] = true;
+wantedTiles[125] = true;
+wantedTiles[126] = true;
+wantedTiles[127] = true;
+wantedTiles[128] = true;
+wantedTiles[129] = true;
+wantedTiles[130] = true;
+wantedTiles[131] = true;
+wantedTiles[134] = true;
+wantedTiles[135] = true;
+wantedTiles[136] = true;
+wantedTiles[137] = true;
+wantedTiles[138] = true;
+wantedTiles[139] = true;
+wantedTiles[140] = true;
+wantedTiles[141] = true;
+wantedTiles[142] = true;
+wantedTiles[145] = true;
+wantedTiles[146] = true;
+wantedTiles[147] = true;
+wantedTiles[148] = true;
+wantedTiles[149] = true;
+wantedTiles[150] = true;
+wantedTiles[152] = true;
+wantedTiles[153] = true;
+wantedTiles[154] = true;
+wantedTiles[155] = true;
+wantedTiles[157] = true;
+wantedTiles[159] = true;
+wantedTiles[159] = true;
+wantedTiles[162] = true;
+wantedTiles[163] = true;
+wantedTiles[164] = true;
+wantedTiles[165] = true;
+wantedTiles[166] = true;
+wantedTiles[167] = true;
+wantedTiles[168] = true;
+wantedTiles[169] = true;
+wantedTiles[170] = true;
+wantedTiles[173] = true;
+wantedTiles[174] = true;
+wantedTiles[175] = true;
+wantedTiles[178] = true;
+wantedTiles[181] = true;
+wantedTiles[184] = true;
+wantedTiles[185] = true;
+wantedTiles[186] = true;
+wantedTiles[189] = true;
+wantedTiles[190] = true;
+wantedTiles[191] = true;
+wantedTiles[194] = true;
+wantedTiles[195] = true;
+wantedTiles[196] = true;
+wantedTiles[197] = true;
+wantedTiles[200] = true;
+wantedTiles[201] = true;
+wantedTiles[202] = true;
+wantedTiles[203] = true;
+wantedTiles[204] = true;
+wantedTiles[205] = true;
+wantedTiles[206] = true;
+wantedTiles[208] = true;
+wantedTiles[209] = true;
+wantedTiles[210] = true;
+wantedTiles[211] = true;
+wantedTiles[212] = true;
+wantedTiles[213] = true;
+wantedTiles[214] = true;
+wantedTiles[215] = true;
+wantedTiles[216] = true;
+wantedTiles[217] = true;
+wantedTiles[218] = true;
+wantedTiles[219] = true;
+wantedTiles[220] = true;
+wantedTiles[221] = true;
+wantedTiles[222] = true;
+wantedTiles[223] = true;
+wantedTiles[224] = true;
+wantedTiles[225] = true;
+wantedTiles[226] = true;
+wantedTiles[227] = true;
+wantedTiles[228] = true;
+wantedTiles[229] = true;
+wantedTiles[230] = true;
+wantedTiles[231] = true;
+wantedTiles[232] = true;
+wantedTiles[233] = true;
+wantedTiles[234] = true;
+wantedTiles[236] = true;
+wantedTiles[237] = true;
+wantedTiles[238] = true;
+wantedTiles[239] = true;
+wantedTiles[240] = true;
+wantedTiles[241] = true;
+wantedTiles[242] = true;
+wantedTiles[243] = true;
+wantedTiles[244] = true;
+wantedTiles[245] = true;
+wantedTiles[249] = true;
+wantedTiles[250] = true;
+wantedTiles[251] = true;
+wantedTiles[252] = true;
+wantedTiles[256] = true;
+wantedTiles[257] = true;
+wantedTiles[258] = true;
+wantedTiles[259] = true;
+wantedTiles[263] = true;
+wantedTiles[264] = true;
+wantedTiles[270] = true;
+wantedTiles[271] = true;
+wantedTiles[277] = true;
+wantedTiles[283] = true;
+wantedTiles[412] = true;
+wantedTiles[413] = true;
+wantedTiles[425] = true;
+wantedTiles[426] = true;
+wantedTiles[427] = true;
+wantedTiles[428] = true;
+wantedTiles[438] = true;
+wantedTiles[439] = true;
+wantedTiles[440] = true;
+
+function containsOneOf(t, values)
+  for index, value in ipairs(t) do
+	  if (values[value]) then
+		  return true;
+	  end
+	end
+	return false;
+end
+
 function contains(t, val)
   for index, value in ipairs(t) do
 	  if (value == val) then
@@ -91,7 +238,7 @@ function checkIDs(iteration)
 	  console.writeline(string.format("i: %d, TID: %05d, FID: %x, contains best tile (289)", iteration, TID, FID, tiles[best]));
 		return true;
 	end
-	if (contains(tiles, 99) or contains(tiles, 428) or contains(tiles, 412) or contains(tiles, 413)) then
+	if (containsOneOf(tiles, wantedTiles)) then
 	  console.writeline(string.format("i: %d, TID: %05d, FID: %x, contains good tiles:", iteration, TID, FID));
 		console.write("\t")
 		for index, tile in ipairs(tiles) do

@@ -30,11 +30,11 @@ FRAMES_TO_GET_IN_MENU = 124
 FRAMES_TO_TAKE_ITEM = 49
 
 INITIAL_SEED = 0x8E0222DD
-MAX_PARTY_SIZE = 6
+MAX_PARTY_SIZE = 5
 
 # Alter this for what you're looking for.
 TO_FIND = {
-    'Rare Candy': 10,
+    'Rare Candy': 256,
     'Protein': 10,
 }
 
@@ -166,7 +166,7 @@ def menuFrames(n):
 
 def hashableInventory(items, partyItems):
     s = str(partyItems)
-    for item in ['Rare Candy', 'Protein', 'Ultra Ball', 'PP Up', 'Nugget']:
+    for item in ['Rare Candy', 'Protein']:  # , 'Ultra Ball', 'PP Up', 'Nugget'
         s += item + str(items.get(item, 0))
     return s
 
@@ -183,6 +183,10 @@ def main():
     # TODO: insert first node
     while len(pq) > 0:
         node = heapq.heappop(pq)
+        print("Investigating node f = %d, h = %d" % (node.f(), node.heuristic()))
+        print(node.items)
+        print(node.partyItems)
+        print()
         if node.heuristic() == 0:
             print("DONE!")
             print(node.items)
@@ -197,7 +201,20 @@ def main():
             for action in node.actions:
                 newActions.append(action)
             newActions.append(Action('M', menuFrames(node.partyItems)))
-            heapq.heappush(pq, Node(newItems, 0, node.advances + menuFrames(node.partyItems), newActions))
+            newAdvances = node.advances + menuFrames(node.partyItems)
+            
+            # Check if this new node has already been explored at the same or
+            # earlier frame.
+            inv = hashableInventory(newItems, 0)
+            seen = bestSeen.get(inv, BIG_NUMBER)
+            if newAdvances >= seen:
+                # Note that if we're equal we also abandon this state. Something
+                # else has already investigated from this position (or better) so
+                # we don't need to contine.
+                continue
+            bestSeen[inv] = newAdvances
+            
+            heapq.heappush(pq, Node(newItems, 0, newAdvances, newActions))
 
         # Start searching for candies after at least 1 battle
         seed = rng.advanceRng(INITIAL_SEED, node.advances + LOWEST_RNG_ADVANCES_PER_BATTLE)
