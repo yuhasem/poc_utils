@@ -43,7 +43,14 @@ def advanceRng(seed, steps):
             break
     return seed
 
-class StaticPokemon():
+class Pokemon():
+    
+    def __repr__(self):
+        return "nat: %d, [%d,%d,%d,%d,%d,%d]" % (
+            self.nature, self.hp_iv, self.att_iv, self.def_iv, self.spa_iv,
+            self.spd_iv, self.spe_iv)
+
+class StaticPokemon(Pokemon):
 
     def __init__(self, seed):
         # The first step is the usual VBlank
@@ -69,7 +76,7 @@ class StaticPokemon():
         ivs >>= 5
         self.spd_iv = ivs & 0x1F
         
-class WallyRaltsPokemon():
+class WallyRaltsPokemon(Pokemon):
     
     def __init__(self, seed):
         # VBlank + 2 steps to generate TID (which we don't track)
@@ -99,6 +106,41 @@ class WallyRaltsPokemon():
         self.spa_iv = ivs & 0x1F
         ivs >>= 5
         self.spd_iv = ivs & 0x1F
+        
+class WildPokemon(Pokemon):
+    
+    def __init__(self, seed):
+        # The first step is one to check for Synchronize, which we don't track.
+        seed = advanceRng(seed, 2)
+        self.advances = 2
+        self.nature = top(seed) % 25
+        
+        tentative_nature = -1
+        while tentative_nature != self.nature:
+            pid = 0
+            seed = advanceRng(seed, 1)
+            pid = top(seed)
+            seed = advanceRng(seed, 1)
+            pid += top(seed) << 16
+            tentative_nature = pid % 25
+            self.advances += 2
+        
+        seed = advanceRng(seed, 1)
+        ivs = top(seed)
+        self.hp_iv = ivs & 0x1F
+        ivs >>= 5
+        self.att_iv = ivs & 0x1F
+        ivs >>= 5
+        self.def_iv = ivs & 0x1F
+        
+        seed = advanceRng(seed, 1)
+        ivs = top(seed)
+        self.spe_iv = ivs & 0x1F
+        ivs >>= 5
+        self.spa_iv = ivs & 0x1F
+        ivs >>= 5
+        self.spd_iv = ivs & 0x1F
+        self.advances += 2
         
 def feebasTilesFromSeed(seed):
     tiles = []

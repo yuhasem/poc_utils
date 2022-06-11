@@ -22,20 +22,27 @@ import math
 # for things like PID generation, damage rolls, etc.  It took extra steps to
 # get into the encounter, so it should all even out. (Plus long poke name takes
 # additional battle frames).
-LOWEST_RNG_ADVANCES_PER_BATTLE = 1677
+# Ignore the above.  Experience tells me this will be at least 2000. I'll try
+# to refine this estimate given the actual conditions we see in the grind.
+LOWEST_RNG_ADVANCES_PER_BATTLE = 2000
 
 FRAMES_TO_GET_IN_MENU = 124
 # Assumes 1 character poke name, 1 input to get to the poke, and 10 characters
 # for "RARE CANDY", so it's a bit of an overestimate.
 FRAMES_TO_TAKE_ITEM = 49
 
-INITIAL_SEED = 0x8E0222DD
-MAX_PARTY_SIZE = 5
+# Section 1: 1984 frames, rounded up because NPC RNG frames
+FRAMES_TO_HEAL = 2000
+# Zigzagoon with Tackle (35), Cut (30), and Headbutt (15)
+PP = 80
+
+INITIAL_SEED = 0xC2DB2A6A
+MAX_PARTY_SIZE = 6
 
 # Alter this for what you're looking for.
 TO_FIND = {
-    'Rare Candy': 256,
-    'Protein': 10,
+    'Rare Candy': 235,
+    'Protein': 24,
 }
 
 BIG_NUMBER = 1 << 31
@@ -76,11 +83,8 @@ def PickupReturn(seed, partySize):
     return (pickups, retSteps if retSteps != -1 else steps)
 
 
-def GoodFrames():
+def GoodFrames(seed, partySize, framesToSearch):
     """Use This to find locally good item grabs."""
-    seed = 0x8E0222DD
-    partySize = 6
-    framesToSearch = 4800
     steps = 0
 
     while steps < framesToSearch:
@@ -88,11 +92,10 @@ def GoodFrames():
         pickups, advSteps = PickupReturn(thisSeed, partySize)
         candies = pickups.get('Rare Candy', 0)
         if candies > 1:
-            print('MULTI-CANDY: Advance %d "steps" and get %s' % (steps, pickups))
-        elif candies == 1:
-            if ('Ultra Ball' in pickups or 'Nugget' in pickups
-                or 'Protein' in pickups or 'PP Up' in pickups):
-                print('CANDY+: Advance %d "steps" and get %s' % (steps, pickups))
+            print('MULTI-CANDY: Advance %d and get %s' % (steps, pickups))
+        elif candies <= 1:
+            if ('Ultra Ball' in pickups or 'Protein' in pickups or 'PP Up' in pickups):
+                print('CANDY+: Advance %d and get %s' % (steps, pickups))
         if advSteps > 0:
             steps += advSteps
         else:
@@ -215,6 +218,25 @@ def main():
             bestSeen[inv] = newAdvances
             
             heapq.heappush(pq, Node(newItems, 0, newAdvances, newActions))
+        pp_spent = 0
+        for i in range(len(node.actions) - 1, -1, -1):
+            if node.actions[i].action == "H":
+                break
+            if node.actions[i].action == "B":
+                pp_spent += 1
+        if pp_spent > PP - 10:
+            # We're almost out of PP, consider healing
+            newItems = {}
+            copyItems(node.items, newItems)
+            newActions = []
+            for action in node.actions:
+                newActions.append(action)
+            newActions.append(Action('H', FRAMES_TO_HEAL))
+            newAdvances = node.advances + FRAMES_TO_HEAL
+            heapq.heappush(pq, Node(newItems, node.partyItems, newAdvances, newActions))
+            if pp_spent == PP:
+                # We must heal.  Don't consider anything else for this node.
+                continue
 
         # Start searching for candies after at least 1 battle
         seed = rng.advanceRng(INITIAL_SEED, node.advances + LOWEST_RNG_ADVANCES_PER_BATTLE)
@@ -222,7 +244,7 @@ def main():
         party = MAX_PARTY_SIZE - node.partyItems
         # Assuming that if we wait this long, we might as well have gotten
         # another item in between.
-        framesToSearch = 4 * LOWEST_RNG_ADVANCES_PER_BATTLE
+        framesToSearch = 3 * LOWEST_RNG_ADVANCES_PER_BATTLE
 
         steps = 0
         while steps < framesToSearch:
@@ -282,3 +304,4 @@ def main():
             
 if __name__ == '__main__':
     main()
+    # GoodFrames(0x95DC79D1, 6, 2254)
