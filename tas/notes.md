@@ -331,7 +331,7 @@ Yay! This goes somewhere!  So let's look at what's being done above to see how t
 0x080FA1CA  CMP r1, #0x0
 0x080FA1CC  BEQ 0x080FA1E0       ; if r0 % 2 == 0 goto 0x080FA1E0
 0x080FA1CE  MOV r0, #0xC         ; r0 = 0xC
-0x080FA1D0  B 0x080FA1E2
+0x080FA1D0  BB 0x080FA1E2
 ...  ; This also just data that's used elsewhere in the function. (Reference Addresses)
 0x080FA1E0  MOV r0, #0xD
      ; r0 = 13 if r0 % 2 == 0 else 12
@@ -360,7 +360,7 @@ Yay! This goes somewhere!  So let's look at what's being done above to see how t
 0x080FA1FE  MOV r5, #0x41
 0x080FA200  NEG r5, r5
 0x080FA202  ADD r1, r5, #0x0     ; r1 = -0x41
-0x080FA204  AND r0, r1           ; r0 = *r3 & 0xFFFFFFBF  (B = 0b1011)
+0x080FA204  AND r0, r1           ; r0 = *r3 & 0xFFFFFFBF  (BB = 0b1011)
 0x080FA206  ORR r0, r2           ; it's just a regular or, don't let the extra r confuse you.
      ; you see that bit we left out of the mask above?  lol, we're going to maybe set it here.
 		 ; It's because this is left out of SetPotentialFID.  We're essentially ensuring that it'said
@@ -557,13 +557,13 @@ To take stock, the memory map before SwampMem should look like:
 
 ```
      15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0
-0x00  ?  ?  A  A  A  A A A A R B B B B B B
+0x00  ?  ?  A  A  A  A A A A R BB BB BB BB BB BB
 0x02 FID
 0x04  0  0  0  1  0  1 0 X X X X X X X X X
 0x06  0  0  0  1  1  0 N Y Y Y Y Y Y Y Y Y
 ```
 
-Where R is a random bit, A is a random number in [0x1E, 0x80) (weighted low), B is a random number in [0x0, 0x80), X is rng(0,0x083DE158[0xA]), Y is the same thing with 0xA replace by either 0xC or 0xD (depending on N, another random bit).
+Where R is a random bit, A is a random number in [0x1E, 0x80) (weighted low), BB is a random number in [0x0, 0x80), X is rng(0,0x083DE158[0xA]), Y is the same thing with 0xA replace by either 0xC or 0xD (depending on N, another random bit).
 
 This is repeated 5 times.  RNG is called 7-9 times, FID being the last call.  So overall I should expect between 7 and 45 RNG calls betwee SID and FID. Hmmm....One time I saw 43... And one time I saw only 10, so that fits the bill.
 
@@ -591,24 +591,24 @@ I should probably follow up on that last point.  How does the selection algorith
 0x080FA6A2  BGT 0x080FA6AA        ; if r2 > 1 goto 0x080FA6AA (never used?)
 0x080FA6A4  CMP r2, #0x0
 0x080FA6A6  BEQ 0x080FA6B0        ; if r2 == 0 goto 0x080FA6B0 (start here)
-0x080FA6A8  B 0x080FA752
+0x080FA6A8  BB 0x080FA752
 0x080FA6AA  CMP r2, #0x0
 0x080FA6AC  BEQ 0x080FA702
-0x080FA6AE  B 0x080FA752
+0x080FA6AE  BB 0x080FA752
 0x080FA6B0  LDRB r0, [r3, #0x0]  ; Load *byte* at r3 + 0
-    ; first byte is [A R B B B B B B] with the definitions above
+    ; first byte is [A R BB BB BB BB BB BB] with the definitions above
 0x080FA6B2  LSL r1, r0, #0x19
 0x080FA6B4  LDRB r0, [r5, #0x0]
 0x080FA6B6  LSL r0, r0, #0x19
-    ; so now r1 is B from the lower candidate and r0 is B from the higher candidate.
+    ; so now r1 is BB from the lower candidate and r0 is BB from the higher candidate.
 0x080FA6B8  CMP r1, r0
 0x080FA6BA  BHI 0x080FA74E        ; "Branch if C set and Z clear (unsigned higher)".  Unsighed Higher is like Greater Than but treats the arguments as unsigned.
-    ; if B(lower FID) > B(upper FID) return true;
+    ; if BB(lower FID) > BB(upper FID) return true;
 		; Since this is the first comparison done, it is the most important for understanding FID swaps.
 		; It is also the most influenced by the VBlank >:(
 0x080FA6BC  CMP r1, r0
 0x080FA6BE  BCC 0x080FA6FE
-    ; if B(lower FID) < B(upper FID) return false;
+    ; if BB(lower FID) < BB(upper FID) return false;
 		; so we only have an issue if the *same* random number got generated.
 		; This also explains why it's so stable.  This is the call right before the FID, so the 2 are almost always a pair.
 		; If a FID happens to have a lower predecessor call, it gets picked a LOT.
@@ -624,7 +624,7 @@ I should probably follow up on that last point.  How does the selection algorith
     ; if A(lower FID) > A(upper FID) return true;
 0x080FA6D0  LSR r1, r3, #0x19
 0x080FA6D2  LSR r0, r2, #0x19
-0x080FA6D4  B 0x080FA6FA
+0x080FA6D4  BB 0x080FA6FA
     ; if A(lower FID) == A(upper FID) advance rng;  return false in any case.
 0x080FA6D6  LDRH r0, [r3, #0x0]  ; r0 = bottom 16 bits of *r3
 0x080FA6D8  LSL r4, r0, #0x12    ; r4 = r0 << 18
@@ -655,7 +655,7 @@ I should probably follow up on that last point.  How does the selection algorith
     ; really only happens if r1 == r0 (equal position in blocks of 64 words)
 0x080FA6FE  MOV r0, #0x0         ; r0 = 0   (returning false)
     ; return false
-0x080FA700  B 0x080FA75A         ; goto goto exit (why are there 2 branches??)
+0x080FA700  BB 0x080FA75A         ; goto goto exit (why are there 2 branches??)
 0x080FA702  LDRB r0, [r3, #0x0]
 0x080FA704  LSL r1, r0, #0x19
 0x080FA706  LDRB r0, [r5, #0x0]
@@ -696,7 +696,7 @@ I should probably follow up on that last point.  How does the selection algorith
 0x080FA74C  BCC 0x080FA6FE
 0x080FA74E  MOV r0, #0x1         ; r0 = 1 (should be read as "success")
     ; return true
-0x080FA750  B 0x080FA75A         ; goto exit
+0x080FA750  BB 0x080FA75A         ; goto exit
 0x080FA752  BL 0x08040EA4        ; r0, r1, r2 = AdvanceRNG()
 0x080FA756  MOV r1, #0x1         ; r1 = 1
     ; AdvanceRNG and return false
@@ -855,7 +855,7 @@ My guess would be 0x080EB4D4 is going to get some string data, or pointer to str
 	; So it would copy 3 0xAC bytes into 0x020231CC.  I wonder if that's code point for '?'.  Not ASCII at any rate.
 0x080EB434  ADD r0, r5, 0x0   ; r0 = 0x020231CC for this next function call
 0x080EB436  BL 0x08006AB0     ; CopyBytes(into r0, from r1)
-0x080EB43A  B 0x080EB4C6
+0x080EB43A  BB 0x080EB4C6
   ; return
 ... data
 0x080EB440  LDR r0, [0x080EB45C] (=0x0000FFFF)
@@ -873,7 +873,7 @@ My guess would be 0x080EB4D4 is going to get some string data, or pointer to str
 0x080EB452  BGE 0x080EB478
 0x080EB454  CMP r1, 0x0
 0x080EB456  BEQ 0x080EB468
-0x080EB458  B 0x080EB488      ; This is the relevant branch
+0x080EB458  BB 0x080EB488      ; This is the relevant branch
 ... data
 0x080EB464  CMP r1, 0x15
 0x080EB466  BNE 0x080EB488
@@ -882,14 +882,14 @@ My guess would be 0x080EB4D4 is going to get some string data, or pointer to str
 0x080EB46C  MUL r1, r0
 0x080EB46E  LDR r0, [0x080EB474] (=0x81F7114)
 0x080EB470  ADD r1, r1, r0
-0x080EB472  B 0x080EB4B8
+0x080EB472  BB 0x080EB4B8
 ... data
 0x080EB478  MOV r0, 0xD  ; 0XD = emoticon for angel laughing its ass off
 0x080EB47A  ADD r1, r2, 0x0
 0x080EB47C  MUL r1, r0
 0x080EB47E  LDR r0, [0x080EB484] (=0x081F82C8)
 0x080EB480  ADD r1, r1, r0
-0x080EB482  B 0x080EB4B8
+0x080EB482  BB 0x080EB4B8
 ... data
   ; RELEVANT BRANCH HERE
 0x080EB488  LDR r0, [0x080EB4CC] (0x083DE158)   ; r0 = 0x083DE158
@@ -942,7 +942,7 @@ My guess would be 0x080EB4D4 is going to get some string data, or pointer to str
 
 What if it's ascii but the upper bit set to 1 (for some reason)?
 
-B I N _ ? Q C M N M _ 
+BB I N _ ? Q C M N M _ 
 
 Well that doesn't look right...
 
@@ -1014,7 +1014,7 @@ ValidateWord(uint16_t word (r0))
 0x080EB3B8  BGE 0x080EB3CC
 0x080EB3BA  CMP r2, 0x0
 0x080EB3BC  BEQ 0x080EB3CC
-0x080EB3BE  B 0x080EB400
+0x080EB3BE  BB 0x080EB400
 ... data
 0x080EB3C8  ; there's a branch to here
 ... truncated irrelevant bits
@@ -1033,7 +1033,7 @@ ValidateWord(uint16_t word (r0))
 	; maximum number it should be.
 	; I think this entire function is checking the validity of the mystery bits.
 0x080EB40A  MOV r0, 0x0        ; r0 = 0
-0x080EB40C  B 0x080EB416
+0x080EB40C  BB 0x080EB416
 0x080EB40E  LSL r0, r0, 0x0    ; nop
 0x080EB410  BL 0x0815D48E      ; never executed in our path.
 0x080EB414  MOV r0, 0x1
@@ -1046,4 +1046,223 @@ ValidateWord(uint16_t word (r0))
 0x080EB41A  BX r1
 ```
 
+## Initial RNG seed Ruby
 
+Looking into seed planting on Ruby (RNG, not berries)
+
+0x08040ECD does something with RNG: STR r0, [r1] where r1 is adress of RNG, so this is likely the seed plant.
+
+This function is right after the RNG advance in code so that makes sense too.  Now where is this called from?
+
+```
+0x08040EC8  LDR r1, [0x08040ED0] (=0x03004818)
+  ; puts RNG address into r1
+0x08040ECA  STR r0, [r1, 0x0]
+  ; writes contents of r0 into RNG address
+0x08040ECC  BX rl
+  ; return
+```
+
+Appears to be called from 0x080003F8
+
+```
+0x080003DA  LSL r0, r0, 0x0
+0x080003DC  ASR r0, r6, 0x1D
+0x080003DE  LSL r0, r0, 0xC
+0x080003E0  LSL r4, r7, 0x10
+0x080003E2  LSL r0, r0, 0x0
+  ; above is likely just data
+0x080003E4  PUSH {LR}
+0x080003E6  BL 0x0800968C
+  ; What does this function do?  Probably picks the initial seed
+0x080003EA  ADD r2, r0, 0x0       ; r2 = r0
+0x080003EC  LSR r0, r2, 0x10      ; r0 = r2 >> 16
+  ; r0 = r0 >> 16
+0x080003EE  LDR r1, [0x080003FC] (=0x0000FFFF)
+0x080003F0  AND r1, r2            ; r1 = r1 & r2
+  ; r0 = bottom 16 bits of r2
+0x080003F2  EOR r0, r1            ; r0 = r0 ^ r1
+  ; r0 = bottom 16 bits of the return from 0x0800968C XOR top 16 bits of the return from 0x0800968C.
+	; Hey, that matches what's going on with Sapphire
+	; So I guess the formula in 0x0800968C is different which causes the different seed.
+	;  It's not >:(
+0x080003F4  BL 0x08040EC4
+  ; plant seed
+0x080003F8  POP {r0}
+0x080003FA  BX r0
+```
+
+```
+0x0800968C  PUSH {r4, lr}
+0x0800968E  LDR r4, [0x080096C0] (=0x03000460)   ; the value at this register seems to be a constant: 0x02050722
+  ; Actually, this is probably the place in memory where it reads time from.  When disabling real time it changed to 0x05010110
+	; 0xXXXXXXXX
+	;    ^ day of the week
+	;      ^ this byte is the day
+	;        ^ this byte is the month
+	;         ^ tens of years after 2000
+	;          ^ years after the decade
+	; 0xXXXXXXXX (immediately following the previous)
+	;    ^ ?? (always 0x40?)
+	;     ^ tens of seconds after the minute
+	;      ^ seconds after the last 10s increment.
+	;       ^ 10s of minutes after the hour
+	;        ^ minutes after the last ten minute increment
+	;         ^ tens of hours after midnight
+	;          ^ hours after the last ten hour increment within a day (eww...)
+0x08009690  ADD r0, r4, 0x0      ; r0 = r4
+0x08009690  BL 0x080092B4
+  ; I'd be willing to bet this transforms Unix time into the god awful format described above
+0x08009696  ADD r0, r4, 0x0      ; r0 = r4
+0x08009698  BL 0x0800920C
+  ; r0 = DaysAfter2000()
+... r0 = uint16_t (r0)
+0x080096A0  LSL r1, r0, 0x01     ; r1 = r0 << 1
+0x080096A2  ADD r1, r1, r0       ; r1 = r1 + r0
+0x080096A4  LSL r0, r1, 0x04     ; r0 = r1 << 4
+0x080096A6  SUB r0, r0, r1       ; r0 = r0 - r1
+0x080096A8  LSL r0, r0 0x05      ; r0 = r0 << 5
+0x080096AA  LDRB r2, [r4, 0x4]   ; r2 = 4 byte offset from adress r4
+  ; r2 = hours (in weird format)
+0x080096AC  LSL r1, r2 , 0x04    ; r1 = r2 << 4
+0x080096AE  SUB r1, r1, r2       ; r1 = r1 - r2
+0x080096B0  LSL r1 ,r1, 0x02     ; r1 = r1 << 2
+0x080096B2  ADD r0, r0, r1       ; r0 = r0 + r1
+0x080096B4  LDRB r4, [r4, 0x5]   ; r4 = 5 bytes offset from address r4
+  ; r4 = minutes (in weird format)
+0x080096B6  ADD r0, r0, r4       ; r0 = r0 + r4
+0x080096B8  POP {r4}
+0x080096BA  POP {r1}
+0x080096BC  BX r1                ; return
+  ; days = DaysAfter2000()
+	; days = days * 1440
+	; hoursAdd = hours
+
+...
+0x080092B4  PUSH {r4, lr}
+0x080092B6  ADD r2, r0, 0x0
+...
+
+
+; DaysAfter2000(r0 = weirdTimeAddress)
+0x0800920C  PUSH {r4-r6, lr}
+  ; r0 = adress of time
+0x0800920E  ADD r6, r0, 0x0
+0x08009210  LDRB r0, [r6, 0x0]
+  ; r0 = years after 2000
+0x08009212  BL 0x08009120       ; GetIntegerValueOfFuckedUpByte(years)
+0x08009216  ADD r5, r0, 0x0
+0x08009218  LSL r5, r5, 0x18
+0x0800921A  LSR r5, r5, 0x18
+  ; uint8_t r5 = GetYears()
+0x0800921C  LDRB r0, [r6 0x1]
+  ; r0 = month
+0x0800921E  BL 0x08009120       ; GetIntegerValueOfFuckedUpByte(month)
+0x08009222  ADD r4, r0, 0x0
+0x08009224  LSL r4, r4, 0x18
+0x08009226  LSR r4, r4, 0x18
+  ; unit8_t r4 = GetMonth()
+0x08009228  LDRB r0, [r6, 0x2]
+  ; r0 = day of the month
+0x0800922A  BL 0x08009120       ; GetIntegerValueOfFuckedUpByte(day)
+0x0800922E  ADD r2, r0, 0x0
+0x08009230  LSL r2, r2, 0x18
+0x08009232  LSR r2, r2, 0x18
+  ; uint8_t r2 = GetDays()
+0x08009234  ADD r0, r5, 0x0
+0x08009236  ADD r1, r4, 0x0
+0x08009238  BL 0x08009180       ; r0 = GetDaysAfter2000(r0, r1, r2)
+0x0800923C  LSL r0, r0, 0x10
+0x0800923E  LSR r0, r0, 0x10
+0x08009240  POP {r4-r6}
+0x08009242  POP {r1}
+0x08009244  BX r1
+
+
+; GetIntegerValueOfFuckedUpByte(r0)
+0x08009120  PUSH {lr}
+0x08009122  LSL r0, r0, 0x18
+0x08009124  LSR r2, r0, 0x18
+  ; r2 = uint8_t (r0)
+0x08009126  CMP r2, 0x9F
+0x08009128  BHI 0x08009132
+  ; if r2 > 0x9F go here
+0x0800912A  MOV r3, 0xF       ; r3 = 0xF
+0x0800912C  AND r3, r2        ; r3 = r3 & r2
+0x0800912E  CMP r3, 0x9
+0x08009130  BLS 0x08009136
+  ; if r3 <= 0x9 go here
+0x08009132  MOV r0, 0xFF      ; r0 = 0xFF
+0x08009134  B 0x08009144      ; goto end;
+0x08009136  LSR r1, r0, 0x1C  ; r1 = r0 >> 28  (only top 4 bits of r0 are left)
+0x08009138  MOV r0, 0xF       ; r0 = 0xF
+0x0800913A  AND r1, r0        ; r1 = r1 & 0xF
+0x0800913C  LSL r0, r1, 0x2   ; r0 = r1 << 2
+0x0800913E  ADD r0, r0, r1    ; r0 = r0 + r1
+0x08009140  LSL r0, r0, 0x01  ; r0 = r0 << 1
+0x08009142  ADD r0, r0, r3    ; r0 = r0 + r3
+0x08009144  POP {r1} 
+0x08009146  BX r1
+  ; if (r0 > 159) { return 0xFF; }
+	; uint8_t bottom = r0 & 0xF
+	; if (thing > 9) { return 0xFF; }
+	; uint8_t top = (r0 >> 4) & 0xF
+	; r0 = 10*top + bottom
+	; Guess what!  These are all stored so that the top byte represents a 10s place and the bottom byte represents the ones byte
+	; So we just return the integer value!
+
+	
+; GetDaysAfter2000(r0 = years, r1 = months, r2 = days)
+0x08009180  PUSH {r4-r7, lr}
+0x08009182  MOV r7, r8
+0x08009184  PUSH {r7}
+... Make sure all the inputs are bytes
+0x08009192  MOV r8, r2
+0x08009194  MOV r5, 0x0
+0x08009196  SUB r4, r7, 0x1
+0x08009198  CMP r4, 0x0
+0x0800919A  BLT 0x080091C0
+0x0800919C  LDR r1, [0x08009204] (=0x0000016D) (decimal 365)
+0x0800919E  ADD r0, r5, 1
+... r5 = uint16_t (r0)
+  ; this is a for loop with r5 as the counter
+... r0 = uint8_t (r4)
+0x080091A8  BL 0x08009148
+... r0 = uint8_t (r0)
+0x080091B0  CMP r0, 0x1
+0x080091B2  BNE 0x080091BA
+0x080091B4  ADD r0, r5, 0x1
+... r5 = uint16_t (r0)
+0x080091BA  SUB r4, 0x1
+0x080091BC  CMP r4, 0x0
+0x080091BE  BGE 0x0800919C
+0x080091C0  SUB r0, r6, 0x1
+0x080091C2  CMP r0, 0x0
+0x080091C4  BLE 0x080091D8
+0x080091C6  LDR r1, [0x08009208] (=0x081E7634)
+0x080091C8  ADD r4, r0, 0x0
+0x080091CA  LDMIA r1!, {r0}
+0x080091CC  ADD r0, r5, r0
+... r5 = uint16_t (r0)
+0x080091D2  SUB r4, 0x1
+0x080091D4  CMP r4, 0x0
+0x080091D6  BNE 0x080091CA
+0x080091D8  CMP r6, 0x2
+0x080091DA  BLS 0x080091CA
+0x080091DC  ADD r0, r7, 0x0
+0x080091DE  BL 0x08009148
+... r0 = uint8_t (r0)
+0x080091E6  CMP r0, 0x1
+0x080091E8  BNE 0x080091F0
+0x080091EA  ADD r0, r5, 0x1
+.. r5 = uint16_t (r0)
+0x080091F0  MOVE r1, r8
+0x080091F2  ADD r0, r5, r1       ; this is the final step after the for loop adding the days of the month
+... r5 = uint16_t (r0)
+0x080091F8  ADD r0, r5, 0x0
+0x080091FA  POP {r3}
+0x080091FC  MOVE r8, r3
+0x080091FE  POP {r4-r7}
+0x08009200  POP {r1}
+0x08009202  BX r1
+```

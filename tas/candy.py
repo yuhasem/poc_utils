@@ -10,6 +10,10 @@ will contain <256 elements, and assuming Deque implementation, will be 5KiB
 max.  Assumin a max of n^2 elements being checked (probably less beause of how
 linear the search space is structured), that would take around 4MiB of memory,
 so we're well within acceptable bounds.
+
+TODO: We could precisely model the wild pokemon generated and how quickly they
+could be beaten, which requires knowing the main's stats and potentially move
+learn levels.
 """
 
 import rng
@@ -24,7 +28,10 @@ import math
 # additional battle frames).
 # Ignore the above.  Experience tells me this will be at least 2000. I'll try
 # to refine this estimate given the actual conditions we see in the grind.
-LOWEST_RNG_ADVANCES_PER_BATTLE = 2000
+# In reality this varies a lot based on level situation.  A more complicated
+# model would be needed to take that into account, which I'm not going to build
+# right now.
+LOWEST_RNG_ADVANCES_PER_BATTLE = 1660
 
 FRAMES_TO_GET_IN_MENU = 124
 # Assumes 1 character poke name, 1 input to get to the poke, and 10 characters
@@ -32,17 +39,21 @@ FRAMES_TO_GET_IN_MENU = 124
 FRAMES_TO_TAKE_ITEM = 49
 
 # Section 1: 1984 frames, rounded up because NPC RNG frames
+# Section 2: Not measured yet
 FRAMES_TO_HEAL = 2000
 # Zigzagoon with Tackle (35), Cut (30), and Headbutt (15)
-PP = 80
+# Aron with Tackle (35), Headbutt (15), Metal Claw (35), and Rock Tomb (10)
+# Geodude with Tackle (35), Rock Throw (15), Magnitude (30), and Rock Tomb (10)
+INITIAL_PP = 90
+MAX_PP = 90
 
-INITIAL_SEED = 0xC2DB2A6A
-MAX_PARTY_SIZE = 6
+INITIAL_SEED = 0x0
+MAX_PARTY_SIZE = 5
 
 # Alter this for what you're looking for.
 TO_FIND = {
-    'Rare Candy': 235,
-    'Protein': 24,
+    'Rare Candy': 140,
+    'Ultra Ball': 10,
 }
 
 BIG_NUMBER = 1 << 31
@@ -93,9 +104,11 @@ def GoodFrames(seed, partySize, framesToSearch):
         candies = pickups.get('Rare Candy', 0)
         if candies > 1:
             print('MULTI-CANDY: Advance %d and get %s' % (steps, pickups))
-        elif candies <= 1:
+        elif candies == 1:
+            print('CANDY+: Advance %d and get %s' % (steps, pickups))
+        elif candies < 1:
             if ('Ultra Ball' in pickups or 'Protein' in pickups or 'PP Up' in pickups):
-                print('CANDY+: Advance %d and get %s' % (steps, pickups))
+                print('ITEM+: Advance %d and get %s' % (steps, pickups))
         if advSteps > 0:
             steps += advSteps
         else:
@@ -147,7 +160,7 @@ class Node():
         num = 0
         for item in ['Rare Candy', 'Protein', 'Ultra Ball', 'PP Up', 'Nugget']:
             num += max(0, TO_FIND.get(item, 0) - self.items.get(item, 0))
-        return math.ceil(num/3)*(LOWEST_RNG_ADVANCES_PER_BATTLE+90) + (num//2)*menuFrames(3)
+        return math.ceil(num/3)*(LOWEST_RNG_ADVANCES_PER_BATTLE+120) + (num//2)*menuFrames(3)
     
     def g(self):
         return self.advances
@@ -219,12 +232,14 @@ def main():
             
             heapq.heappush(pq, Node(newItems, 0, newAdvances, newActions))
         pp_spent = 0
+        pp_compare = INITIAL_PP
         for i in range(len(node.actions) - 1, -1, -1):
             if node.actions[i].action == "H":
+                pp_compare = MAX_PP
                 break
             if node.actions[i].action == "B":
                 pp_spent += 1
-        if pp_spent > PP - 10:
+        if pp_spent > pp_compare - 10:
             # We're almost out of PP, consider healing
             newItems = {}
             copyItems(node.items, newItems)
@@ -234,7 +249,7 @@ def main():
             newActions.append(Action('H', FRAMES_TO_HEAL))
             newAdvances = node.advances + FRAMES_TO_HEAL
             heapq.heappush(pq, Node(newItems, node.partyItems, newAdvances, newActions))
-            if pp_spent == PP:
+            if pp_spent == pp_compare:
                 # We must heal.  Don't consider anything else for this node.
                 continue
 
@@ -273,17 +288,15 @@ def main():
             newActions = []
             for action in node.actions:
                 newActions.append(action)
-            newActions.append(Action('B', oldSteps))
+            newActions.append(Action('B', LOWEST_RNG_ADVANCES_PER_BATTLE + oldSteps))
             newPartyItems = node.partyItems + numTotalPickups
-            newAdvances = node.advances + LOWEST_RNG_ADVANCES_PER_BATTLE + oldSteps + 90
+            newAdvances = node.advances + LOWEST_RNG_ADVANCES_PER_BATTLE + oldSteps + 120
 
             newPartySize = party - numTotalPickups
             if newPartySize < 0:
                 newPartySize = 0
                 print ('uh oh')
             if newPartySize == 0:
-                # The +90 is for fade out/in on the battle.  I need to structure
-                # this better to get rid of that...
                 newActions.append(Action('M', menuFrames(MAX_PARTY_SIZE)))
                 newAdvances += menuFrames(MAX_PARTY_SIZE)
                 newPartyItems = 0
@@ -303,5 +316,6 @@ def main():
 
             
 if __name__ == '__main__':
-    main()
-    # GoodFrames(0x95DC79D1, 6, 2254)
+    # main()
+    # seed = rng.advanceRng(0x8C8BF970, 2283)
+    GoodFrames(0x369E4CC2, 1, 120)

@@ -58,7 +58,7 @@ local multspb={
 local memoryDomain = "System Bus";
 
 local encounterTableAddress = 0x839D29C;
-local cave = true
+local cave = false
 local surf = false
  
 
@@ -87,8 +87,9 @@ function gettop(a)
 end
 
 -- draws a 3x3 square
-function drawsquare(a,b,lineColor,fillColor)
- gui.drawBox(a,b,a+2,b+2,lineColor,fillColor)
+function drawsquare(a,b,srColor,grColor,orColor)
+ gui.drawBox(a,b,a+4,b+4,srColor,0x00000000)
+ gui.drawBox(a+1,b+1,a+3,b+3,grColor,orColor)
 end
 
 
@@ -133,65 +134,57 @@ while true do
  gui.text(2,36,"v")
  -- i row j column
  -- 5th row, 4th column is the first value where a pickup will be generated (for A press on XP gain, does not take into account levels, might take longer for large XP gains).
- for i=0,17,1 do
-  for j=0,15,1 do
-	 -- Default light gray
-   clr=0xFFC0C0C0
-	 if j % 9 == 0 then
-	   -- Dark gray on the tenth row.  While running, this is the column we can line up with.
-	   clr = 0xFF404040;
-	 end
+ for i=0,13,1 do
+  for j=0,4,1 do
+   -- Default light gray
+   orColor=0xFFC0C0C0
+   grColor=0xFFC0C0C0
+   srColor=0xFFC0C0C0
    randvalue=gettop(test)
-
-	 density = 320
-	 if cave then
-	   density = density / 2
-	 end
-	 if surf then
-	   density = density / 5
-	 end
-	 if randvalue % 2880 < density then
-	   -- Encounter Generated, black box
-	   clr = 0xFF000000;
-	 end
 	 
-	 local slot = randvalue%100;
-	 if slot >= 0 and slot < 20 then
-	     -- black for boring slot
-		 fillColor = 0xFF000000;
-	 elseif slot >= 20 and slot < 40 then
-	     -- black for boring slot
-	     fillColor = 0xFFFFC0C0;
-	 elseif slot >= 40 and slot < 50 then
-	     -- Varying grays for 10% slots
-	     fillColor = 0xFF404040;
-     elseif slot >= 50 and slot < 60 then
-		 fillColor = 0xFF808080;
-	 elseif slot >= 60 and slot < 70 then
-		 fillColor = 0xFFC0C0C0;
-	 elseif slot >= 70 and slot < 80 then
-		 fillColor = 0xFFFFFFFF;
-	 elseif slot >= 80 and slot < 85 then
-	     -- 1st 5% slot = magenta
-		 fillColor = 0xFFFF00FF;
-	 elseif slot >= 85 and slot < 90 then
-	     -- 2nd 5% slot = cyan
-		 fillColor = 0xFF00FFFF;
-	 elseif slot >= 90 and slot < 94 then
-	     -- 1st 4% slot = yellow
-	     fillColor = 0xFFFFFF00;
-	 elseif slot >= 94 and slot < 98 then
-	     -- 2nd 4% slot = green
-		 fillColor = 0xFF00FF00;
-	 elseif slot >= 98 and slot < 99 then
-	     -- 1st 1% slot = red
-	     fillColor = 0xFFFF0000;
-     elseif randvalue%100==99 then
-	     -- 2nd 1% slot = blue
-		 fillColor = 0xFF0000FF;
+   local slot = randvalue%100;
+
+   -- Super Rod Colors
+   if slot >= 0 and slot < 40 then
+  	 -- Cyan
+  	 srColor = 0xFF00FFFF;
+   elseif slot >= 40 and slot < 80 then
+  	 -- Yellow
+  	 srColor = 0xFFFFFF00;
+   elseif slot >= 80 and slot < 95 then
+  	 -- Green
+  	 srColor = 0xFF00FF00;
+   elseif slot >= 95 and slot < 99 then
+     -- Red
+  	 srColor = 0xFFFF0000;
+   elseif slot == 99 then
+  	 -- Blue
+  	 srColor = 0xFF0000FF;
    end
 
-   drawsquare(2+4*j,44+4*i, clr, fillColor)
+   -- Good Rod Colors
+   if slot >= 0 and slot < 60 then
+     grColor = 0xFF00FF00;
+   elseif slot >= 60 and slot < 80 then
+     grColor = 0xFFFF0000;
+   else
+     grColor = 0xFF0000FF;
+   end
+   
+   -- Old Rod Colors
+   if slot >=0 and slot < 70 then
+     orColor = 0xFFFF0000;
+   else
+     orColor = 0xFF0000FF;
+   end
+
+   drawsquare(2+30*j,30+10*i, srColor, grColor, orColor);
+   
+   -- Levels determination
+   byFives = randvalue % 6;
+   byTwenties = randvalue % 21;
+   
+   gui.text(25+90*j, 90+30*i, byFives.." / "..byTwenties);
 
    test=mult32(test,0x41C64E6D) + 0x6073
   end

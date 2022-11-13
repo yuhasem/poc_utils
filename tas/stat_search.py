@@ -50,12 +50,32 @@ def ZigChadSpeed(zig):
     if zig.spe_iv >= 19:
         return True
     return False
+
+def GeoDudeNature(dude):
+    if dude.nature in (1, 2, 3, 4):
+        return True
+    return False
+
+def GeoDudeAttack(dude):
+    if dude.att_iv >= 28:
+        return True
+    return False
+
+def AronAttack(dude):
+    if dude.att_iv >= 31:
+        return True
+    return False
         
 
 def main():
     # Finding a chad zigzagoon for 6 pickup uptime slots
-    seed = 0x10151485
-    FindWildPokemon(seed, 320, 94, 98, [ZigChadNature, ZigChadAttack, ZigChadSpeed])
+    # seed = 0x1709c8ca
+    seed = 0xc4ce3f43
+    # FindWildPokemon(seed, 320, 94, 98, [ZigChadNature, ZigChadAttack, ZigChadSpeed])
+    print("Geodude")
+    FindWildPokemon(seed, 160, 99, 100, [GeoDudeNature, GeoDudeAttack])
+    print("Aron")
+    FindWildPokemon(seed, 160, 60, 70, [GeoDudeNature, AronAttack])
 
 if __name__ == '__main__':
     main()

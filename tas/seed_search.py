@@ -77,38 +77,38 @@ class Event():
 def main():
     seed = 0xF9B2
     # Accounting for Poochy need a later frame
-    seed = rng.advanceRng(seed, 59600)
-    for i in range(2000):
-        tryseed = rng.advanceRng(seed, i)
-        if (FastWally(tryseed)):
-            print("Fast Wally at seed", seed, " offset:", i, "+59600")
-    # for seed in range(1 << 16):
-    #     # The starting RNG seeds in RSE are always of the form 0x0000XXXX where
-    #     # the last 16 bits is determined by the date. So here we're searching
-    #     # all possible starting seeds for ones that give access to good events
-    #     # early on.
-    #     # Earliest we can get to the Pickup determination of the Calvin fight.
-    #     calvin_seed = rng.advanceRng(seed, 43000)
-    #     candies = 0
-    #     for i in range(600):
-    #         # May involve parity shifting the fight, but should be fine.
-    #         tryseed = rng.advanceRng(calvin_seed, i)
-    #         # We have 5 zigs in a row, so need to check 5 instead of 6.
-    #         candies = rng.rareCandies(tryseed, 5)
-    #         if candies >= 4:
-    #             print("Calvin candies", candies, "at offset", i, "+43000")
-    #             break
-    #     if candies < 4:
-    #         # Don't consider the seed if we don't get many candies on the Calvin
-    #         # fight
-    #         continue
-    #     # Earliest we can generate the Zig for Wall fight is here
-    #     wally_seed = rng.advanceRng(seed, 57550)
-    #     for i in range(120):
-    #         tryseed = rng.advanceRng(wally_seed, i)
-    #         if (FastWally(tryseed)):
-    #             print("Fast Wally at seed", seed, " offset:", i, "+57550\n")
-    #             break
+    # seed = rng.advanceRng(seed, 59600)
+    # for i in range(2000):
+    #     tryseed = rng.advanceRng(seed, i)
+    #     if (FastWally(tryseed)):
+    #         print("Fast Wally at seed", seed, " offset:", i, "+59600")
+    for seed in range(1 << 16):
+        # The starting RNG seeds in RSE are always of the form 0x0000XXXX where
+        # the last 16 bits is determined by the date. So here we're searching
+        # all possible starting seeds for ones that give access to good events
+        # early on.
+        # Earliest we can get to the Pickup determination of the Calvin fight.
+        calvin_seed = rng.advanceRng(seed, 43000)
+        candies = 0
+        for i in range(1600):
+            # May involve parity shifting the fight, but should be fine.
+            tryseed = rng.advanceRng(calvin_seed, i)
+            # We have 5 zigs in a row, so need to check 5 instead of 6.
+            candies = rng.rareCandies(tryseed, 5)
+            if candies >= 5:
+                print("Calvin candies", candies, "at offset", i, "+43000")
+                break
+        if candies < 5:
+            # Don't consider the seed if we don't get many candies on the Calvin
+            # fight
+            continue
+        # Earliest we can generate the Zig for Wall fight is here
+        # wally_seed = rng.advanceRng(seed, 57550)
+        # for i in range(120):
+        #     tryseed = rng.advanceRng(wally_seed, i)
+        #     if (FastWally(tryseed)):
+        #         print("Fast Wally at seed", seed, " offset:", i, "+57550\n")
+        #         break
 
 if __name__ == '__main__':
     main()
