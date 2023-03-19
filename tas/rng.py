@@ -117,12 +117,12 @@ class WildPokemon(Pokemon):
         
         tentative_nature = -1
         while tentative_nature != self.nature:
-            pid = 0
+            self.pid = 0
             seed = advanceRng(seed, 1)
-            pid = top(seed)
+            self.pid = top(seed)
             seed = advanceRng(seed, 1)
-            pid += top(seed) << 16
-            tentative_nature = pid % 25
+            self.pid += top(seed) << 16
+            tentative_nature = self.pid % 25
             self.advances += 2
         
         seed = advanceRng(seed, 1)

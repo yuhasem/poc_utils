@@ -11,12 +11,14 @@
 -- leafgreen 0x020241e4
 -- http://pastebin.com/ZHxPYDsN
 
-local rngAddress=0x3004818
+local rngAddress = 0x3004818
 local rngValue
 local elipses
 local reelInFrames
 local reel
 local reelText
+local fromBag = true
+local framesToFirst
 
 local bnd,br,bxr=bit.band,bit.bor,bit.bxor
 
@@ -71,8 +73,15 @@ function gettop(a)
  return(bit.rshift(a,16))
 end
 
+fromBag = false
+
 rngValue = memory.read_u32_le(rngAddress, memoryDomain);
-for i=1,58,1 do
+if fromBag then
+  framesToFirst = 58
+else
+  framesToFirst = 2  -- TODO verify
+end
+for i=1,framesToFirst,1 do
   rngValue = bnd(mult32(rngValue, 0x41C64E6D) + 0x6073, 0xFFFFFFFF);
 end
 -- TODO: For Super Rod this may not be 1, will read RNG and make adjustments later
@@ -88,7 +97,6 @@ reelInFrames = 21 + 20*elipses
 for i=1,reelInFrames,1 do
   rngValue = bnd(mult32(rngValue, 0x41C64E6D) + 0x6073, 0xFFFFFFFF);
 end
-console.writeline(rngValue)
 reel = gettop(rngValue) % 2 == 0
 if reel then
   reelText = "Yes";

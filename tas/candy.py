@@ -31,7 +31,7 @@ import math
 # In reality this varies a lot based on level situation.  A more complicated
 # model would be needed to take that into account, which I'm not going to build
 # right now.
-LOWEST_RNG_ADVANCES_PER_BATTLE = 1660
+LOWEST_RNG_ADVANCES_PER_BATTLE = 1700
 
 FRAMES_TO_GET_IN_MENU = 124
 # Assumes 1 character poke name, 1 input to get to the poke, and 10 characters
@@ -42,18 +42,22 @@ FRAMES_TO_TAKE_ITEM = 49
 # Section 2: Not measured yet
 FRAMES_TO_HEAL = 2000
 # Zigzagoon with Tackle (35), Cut (30), and Headbutt (15)
-# Aron with Tackle (35), Headbutt (15), Metal Claw (35), and Rock Tomb (10)
+# Aron with Tackle (35), Headbutt (15), Metal Claw (35), and Mud Slap (10)
 # Geodude with Tackle (35), Rock Throw (15), Magnitude (30), and Rock Tomb (10)
-INITIAL_PP = 90
-MAX_PP = 90
+INITIAL_PP = 95
+MAX_PP = 95
 
-INITIAL_SEED = 0x0
+INITIAL_SEED = 0xBAAE5A7F
 MAX_PARTY_SIZE = 5
 
 # Alter this for what you're looking for.
 TO_FIND = {
-    'Rare Candy': 140,
-    'Ultra Ball': 10,
+    # Overestimate of candies because I really just want to get Aron as much XP
+    # as possible and overgrind the candies with Geodude.
+    'Rare Candy': 88,
+    # Forgoing Ultra Balls because it's probably faster to just buy balls in
+    # a mart.  But still check if we can pick up any for free in the route.
+    # 'Ultra Ball': 10,
 }
 
 BIG_NUMBER = 1 << 31
@@ -91,7 +95,9 @@ def PickupReturn(seed, partySize):
             pickups['PP Up'] = pickups.get('PP Up', 0) + 1
         else:
             pickups['useless'] = pickups.get('useless', 0) + 1
-    return (pickups, retSteps if retSteps != -1 else steps)
+    # TODO: fix retSteps so that it will actually dectect solo Rare Candy grabs
+    # on the last mon.
+    return (pickups, 1)
 
 
 def GoodFrames(seed, partySize, framesToSearch):
@@ -102,13 +108,16 @@ def GoodFrames(seed, partySize, framesToSearch):
         thisSeed = rng.advanceRng(seed, steps)
         pickups, advSteps = PickupReturn(thisSeed, partySize)
         candies = pickups.get('Rare Candy', 0)
+        balls = pickups.get('Ultra Ball', 0)
         if candies > 1:
             print('MULTI-CANDY: Advance %d and get %s' % (steps, pickups))
         elif candies == 1:
             print('CANDY+: Advance %d and get %s' % (steps, pickups))
         elif candies < 1:
-            if ('Ultra Ball' in pickups or 'Protein' in pickups or 'PP Up' in pickups):
+            if ('Ultra Ball' in pickups or 'PP Up' in pickups or 'Protein' in pickups):
                 print('ITEM+: Advance %d and get %s' % (steps, pickups))
+        # if candies + balls >= 2:
+        #     print('GOOD-FRAME: Advance %d and get %s' % (steps, pickups))
         if advSteps > 0:
             steps += advSteps
         else:
@@ -317,5 +326,5 @@ def main():
             
 if __name__ == '__main__':
     # main()
-    # seed = rng.advanceRng(0x8C8BF970, 2283)
-    GoodFrames(0x369E4CC2, 1, 120)
+    seed = rng.advanceRng(0xc40b7e38, 1800)
+    GoodFrames(seed, 5, 100)

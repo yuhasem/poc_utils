@@ -7,7 +7,7 @@ Be wary of lag frames.
 @author: yuhasem
 """
 
-MAX_PRINTS = 200
+MAX_PRINTS = 50
 MAX_SEARCHES = 100000
 
 import rng
@@ -37,45 +37,44 @@ def FindWildPokemon(seed, density, min_slot, max_slot, filters=[]):
             break
         
 def ZigChadNature(zig):
-    if zig.nature in (1, 3, 4):
-        return True
-    return False
+    return zig.nature in (1, 3, 4)
 
 def ZigChadAttack(zig):
-    if zig.att_iv >= 22:
-        return True
-    return False
+    return zig.att_iv >= 22
 
 def ZigChadSpeed(zig):
-    if zig.spe_iv >= 19:
-        return True
-    return False
+    return zig.spe_iv >= 19
 
 def GeoDudeNature(dude):
-    if dude.nature in (1, 2, 3, 4):
-        return True
-    return False
+    return dude.nature in (1, 2, 3, 4)
 
 def GeoDudeAttack(dude):
-    if dude.att_iv >= 28:
-        return True
-    return False
+    return dude.att_iv >= 18
+
+def GeoDudeNature2(dude):
+    return dude.nature % 5 != 0 or dude.nature == 0
+
+def GeoDudeAttack2(dude):
+    return dude.att_iv >= 29
 
 def AronAttack(dude):
-    if dude.att_iv >= 31:
-        return True
-    return False
+    return dude.att_iv >= 25
+
+def AronAbility(aron):
+    return aron.pid % 2 == 1
         
 
 def main():
     # Finding a chad zigzagoon for 6 pickup uptime slots
     # seed = 0x1709c8ca
-    seed = 0xc4ce3f43
+    seed = 0xbbed1772
     # FindWildPokemon(seed, 320, 94, 98, [ZigChadNature, ZigChadAttack, ZigChadSpeed])
     print("Geodude")
-    FindWildPokemon(seed, 160, 99, 100, [GeoDudeNature, GeoDudeAttack])
+    FindWildPokemon(seed, 2880, 99, 100, [GeoDudeNature, GeoDudeAttack])
+    # print("oh no")
+    # FindWildPokemon(seed, 160, 99, 100, [GeoDudeNature2, GeoDudeAttack2])
     print("Aron")
-    FindWildPokemon(seed, 160, 60, 70, [GeoDudeNature, AronAttack])
+    FindWildPokemon(seed, 160, 60, 70, [GeoDudeNature, AronAttack, AronAbility])
 
 if __name__ == '__main__':
     main()

@@ -21,6 +21,9 @@ r0 is returned as he remainder when |dividend| is divided by |divisor|.
 if r1 = 0, returns r0 = 0.
 Does not try to re-sign r0 or r1.  Slightly more efficient than Remainder().
 
+0x081E0F20 : r0 = Remainder(int32_t dividend (r0), int32_t divisor (r1))
+Yes, there's more than one.
+
 0x08006AB0 : CopyBytes(address into (r0), address from (r1))
 Copies bytes from r1 into r0, advancing both until a 0xFF is reached.
 0xFF is also copied into r0.

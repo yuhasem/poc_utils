@@ -58,7 +58,7 @@ local multspb={
 local memoryDomain = "System Bus";
 
 local encounterTableAddress = 0x839D29C;
-local cave = true
+local cave = false
 local surf = false
  
 
@@ -98,7 +98,7 @@ while true do
  cur=memory.read_u32_le(rng, memoryDomain)
  test=last
  while cur~=test and i<=100 do
-  test=mult32(test,0x41C64E6D) + 0x6073
+  test = bnd(mult32(test, 0x41C64E6D) + 0x6073, 0xFFFFFFFF)
   i=i+1
  end
  gui.text(120,24,string.format("Last RNG value: %x", last))

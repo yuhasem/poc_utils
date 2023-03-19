@@ -331,7 +331,7 @@ Yay! This goes somewhere!  So let's look at what's being done above to see how t
 0x080FA1CA  CMP r1, #0x0
 0x080FA1CC  BEQ 0x080FA1E0       ; if r0 % 2 == 0 goto 0x080FA1E0
 0x080FA1CE  MOV r0, #0xC         ; r0 = 0xC
-0x080FA1D0  BB 0x080FA1E2
+0x080FA1D0  B 0x080FA1E2
 ...  ; This also just data that's used elsewhere in the function. (Reference Addresses)
 0x080FA1E0  MOV r0, #0xD
      ; r0 = 13 if r0 % 2 == 0 else 12
@@ -360,7 +360,7 @@ Yay! This goes somewhere!  So let's look at what's being done above to see how t
 0x080FA1FE  MOV r5, #0x41
 0x080FA200  NEG r5, r5
 0x080FA202  ADD r1, r5, #0x0     ; r1 = -0x41
-0x080FA204  AND r0, r1           ; r0 = *r3 & 0xFFFFFFBF  (BB = 0b1011)
+0x080FA204  AND r0, r1           ; r0 = *r3 & 0xFFFFFFBF  (B = 0b1011)
 0x080FA206  ORR r0, r2           ; it's just a regular or, don't let the extra r confuse you.
      ; you see that bit we left out of the mask above?  lol, we're going to maybe set it here.
 		 ; It's because this is left out of SetPotentialFID.  We're essentially ensuring that it'said
@@ -557,13 +557,13 @@ To take stock, the memory map before SwampMem should look like:
 
 ```
      15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0
-0x00  ?  ?  A  A  A  A A A A R BB BB BB BB BB BB
+0x00  ?  ?  A  A  A  A A A A R B B B B B B
 0x02 FID
 0x04  0  0  0  1  0  1 0 X X X X X X X X X
 0x06  0  0  0  1  1  0 N Y Y Y Y Y Y Y Y Y
 ```
 
-Where R is a random bit, A is a random number in [0x1E, 0x80) (weighted low), BB is a random number in [0x0, 0x80), X is rng(0,0x083DE158[0xA]), Y is the same thing with 0xA replace by either 0xC or 0xD (depending on N, another random bit).
+Where R is a random bit, A is a random number in [0x1E, 0x80) (weighted low), B is a random number in [0x0, 0x80), X is rng(0,0x083DE158[0xA]), Y is the same thing with 0xA replace by either 0xC or 0xD (depending on N, another random bit).
 
 This is repeated 5 times.  RNG is called 7-9 times, FID being the last call.  So overall I should expect between 7 and 45 RNG calls betwee SID and FID. Hmmm....One time I saw 43... And one time I saw only 10, so that fits the bill.
 
@@ -591,24 +591,24 @@ I should probably follow up on that last point.  How does the selection algorith
 0x080FA6A2  BGT 0x080FA6AA        ; if r2 > 1 goto 0x080FA6AA (never used?)
 0x080FA6A4  CMP r2, #0x0
 0x080FA6A6  BEQ 0x080FA6B0        ; if r2 == 0 goto 0x080FA6B0 (start here)
-0x080FA6A8  BB 0x080FA752
+0x080FA6A8  B 0x080FA752
 0x080FA6AA  CMP r2, #0x0
 0x080FA6AC  BEQ 0x080FA702
-0x080FA6AE  BB 0x080FA752
+0x080FA6AE  B 0x080FA752
 0x080FA6B0  LDRB r0, [r3, #0x0]  ; Load *byte* at r3 + 0
-    ; first byte is [A R BB BB BB BB BB BB] with the definitions above
+    ; first byte is [A R B B B B B B] with the definitions above
 0x080FA6B2  LSL r1, r0, #0x19
 0x080FA6B4  LDRB r0, [r5, #0x0]
 0x080FA6B6  LSL r0, r0, #0x19
-    ; so now r1 is BB from the lower candidate and r0 is BB from the higher candidate.
+    ; so now r1 is B from the lower candidate and r0 is B from the higher candidate.
 0x080FA6B8  CMP r1, r0
 0x080FA6BA  BHI 0x080FA74E        ; "Branch if C set and Z clear (unsigned higher)".  Unsighed Higher is like Greater Than but treats the arguments as unsigned.
-    ; if BB(lower FID) > BB(upper FID) return true;
+    ; if B(lower FID) > B(upper FID) return true;
 		; Since this is the first comparison done, it is the most important for understanding FID swaps.
 		; It is also the most influenced by the VBlank >:(
 0x080FA6BC  CMP r1, r0
 0x080FA6BE  BCC 0x080FA6FE
-    ; if BB(lower FID) < BB(upper FID) return false;
+    ; if B(lower FID) < B(upper FID) return false;
 		; so we only have an issue if the *same* random number got generated.
 		; This also explains why it's so stable.  This is the call right before the FID, so the 2 are almost always a pair.
 		; If a FID happens to have a lower predecessor call, it gets picked a LOT.
@@ -624,7 +624,7 @@ I should probably follow up on that last point.  How does the selection algorith
     ; if A(lower FID) > A(upper FID) return true;
 0x080FA6D0  LSR r1, r3, #0x19
 0x080FA6D2  LSR r0, r2, #0x19
-0x080FA6D4  BB 0x080FA6FA
+0x080FA6D4  B 0x080FA6FA
     ; if A(lower FID) == A(upper FID) advance rng;  return false in any case.
 0x080FA6D6  LDRH r0, [r3, #0x0]  ; r0 = bottom 16 bits of *r3
 0x080FA6D8  LSL r4, r0, #0x12    ; r4 = r0 << 18
@@ -655,7 +655,7 @@ I should probably follow up on that last point.  How does the selection algorith
     ; really only happens if r1 == r0 (equal position in blocks of 64 words)
 0x080FA6FE  MOV r0, #0x0         ; r0 = 0   (returning false)
     ; return false
-0x080FA700  BB 0x080FA75A         ; goto goto exit (why are there 2 branches??)
+0x080FA700  B 0x080FA75A         ; goto goto exit (why are there 2 branches??)
 0x080FA702  LDRB r0, [r3, #0x0]
 0x080FA704  LSL r1, r0, #0x19
 0x080FA706  LDRB r0, [r5, #0x0]
@@ -696,7 +696,7 @@ I should probably follow up on that last point.  How does the selection algorith
 0x080FA74C  BCC 0x080FA6FE
 0x080FA74E  MOV r0, #0x1         ; r0 = 1 (should be read as "success")
     ; return true
-0x080FA750  BB 0x080FA75A         ; goto exit
+0x080FA750  B 0x080FA75A         ; goto exit
 0x080FA752  BL 0x08040EA4        ; r0, r1, r2 = AdvanceRNG()
 0x080FA756  MOV r1, #0x1         ; r1 = 1
     ; AdvanceRNG and return false
@@ -855,7 +855,7 @@ My guess would be 0x080EB4D4 is going to get some string data, or pointer to str
 	; So it would copy 3 0xAC bytes into 0x020231CC.  I wonder if that's code point for '?'.  Not ASCII at any rate.
 0x080EB434  ADD r0, r5, 0x0   ; r0 = 0x020231CC for this next function call
 0x080EB436  BL 0x08006AB0     ; CopyBytes(into r0, from r1)
-0x080EB43A  BB 0x080EB4C6
+0x080EB43A  B 0x080EB4C6
   ; return
 ... data
 0x080EB440  LDR r0, [0x080EB45C] (=0x0000FFFF)
@@ -873,7 +873,7 @@ My guess would be 0x080EB4D4 is going to get some string data, or pointer to str
 0x080EB452  BGE 0x080EB478
 0x080EB454  CMP r1, 0x0
 0x080EB456  BEQ 0x080EB468
-0x080EB458  BB 0x080EB488      ; This is the relevant branch
+0x080EB458  B 0x080EB488      ; This is the relevant branch
 ... data
 0x080EB464  CMP r1, 0x15
 0x080EB466  BNE 0x080EB488
@@ -882,14 +882,14 @@ My guess would be 0x080EB4D4 is going to get some string data, or pointer to str
 0x080EB46C  MUL r1, r0
 0x080EB46E  LDR r0, [0x080EB474] (=0x81F7114)
 0x080EB470  ADD r1, r1, r0
-0x080EB472  BB 0x080EB4B8
+0x080EB472  B 0x080EB4B8
 ... data
 0x080EB478  MOV r0, 0xD  ; 0XD = emoticon for angel laughing its ass off
 0x080EB47A  ADD r1, r2, 0x0
 0x080EB47C  MUL r1, r0
 0x080EB47E  LDR r0, [0x080EB484] (=0x081F82C8)
 0x080EB480  ADD r1, r1, r0
-0x080EB482  BB 0x080EB4B8
+0x080EB482  B 0x080EB4B8
 ... data
   ; RELEVANT BRANCH HERE
 0x080EB488  LDR r0, [0x080EB4CC] (0x083DE158)   ; r0 = 0x083DE158
@@ -942,7 +942,7 @@ My guess would be 0x080EB4D4 is going to get some string data, or pointer to str
 
 What if it's ascii but the upper bit set to 1 (for some reason)?
 
-BB I N _ ? Q C M N M _ 
+B I N _ ? Q C M N M _ 
 
 Well that doesn't look right...
 
@@ -1014,7 +1014,7 @@ ValidateWord(uint16_t word (r0))
 0x080EB3B8  BGE 0x080EB3CC
 0x080EB3BA  CMP r2, 0x0
 0x080EB3BC  BEQ 0x080EB3CC
-0x080EB3BE  BB 0x080EB400
+0x080EB3BE  B 0x080EB400
 ... data
 0x080EB3C8  ; there's a branch to here
 ... truncated irrelevant bits
@@ -1033,7 +1033,7 @@ ValidateWord(uint16_t word (r0))
 	; maximum number it should be.
 	; I think this entire function is checking the validity of the mystery bits.
 0x080EB40A  MOV r0, 0x0        ; r0 = 0
-0x080EB40C  BB 0x080EB416
+0x080EB40C  B 0x080EB416
 0x080EB40E  LSL r0, r0, 0x0    ; nop
 0x080EB410  BL 0x0815D48E      ; never executed in our path.
 0x080EB414  MOV r0, 0x1
@@ -1266,3 +1266,281 @@ Appears to be called from 0x080003F8
 0x08009200  POP {r1}
 0x08009202  BX r1
 ```
+
+## Lotto number generation next to FID determination
+
+The lotto number appears to be set at 0x02026B0A on the same frame as the start of FID determination.
+
+0x080692A0 seems to be the instruction that sets it based on a trace log
+
+```
+080692A2:      8004  strh r4, [r0, #0]              R0:02026B0A R1:0806929F R2:0000404B R3:0300402D R4:000010EE R5:00000000 R6:030033A9 R7:00000000 R8:0300402D R9:00000000 R10:00000000 R11:00000000 R12:00000001 R13:03007E10 R14:0806929F R15:080692A4 CPSR:2000003F SPSR:00000000
+```
+
+r4 contains 0x10EE which is what I see written at the end of the frame.
+
+It makes it into r4 around 0x08069296, so let's look at what's happening in that block of code.
+
+```
+16BitWrite : Writes r1 into a memory offset given by r0.  Retruns an error bit into r0
+0x08069290  PUSH {r4,lr}
+0x08069292  LSL r0, r0, 0x10
+0x08069294  LSR r0, r0, 0x10
+0x08069296  LSL r1, r1, 0x10
+0x08069298  LSR r4, r1, 0x10
+0x0806929A  BL 0x08069230      ; This is just setting up the write address
+0x0806929E  CMP r0, 0x0
+0x080692A0  BEQ 0x080692A8
+0x080692A2  STRH r4, [r0, 0x0]
+0x080692A4  MOV r0, 0x1
+0x080692A6  B 0x080692AA
+0x080692A8  MOV r0, 0x0
+0x080692AA  POP {r4}
+0x080692AC  POP {r1}
+0x080692AE  BX r1
+```
+
+So it gets passed in as r1.  Need to go one level up.
+
+```
+Write0x02026B0A : Wrties a 32 bit number from r0 into 0x02026B0A
+0x08145D34  PUSH {r4, lr}
+0x08145D36  ADD r1, r0, 0x0    ; r1 = r0
+0x08145D38  LSR r4, r1, 0x10   ; r4 = r1 >> 16
+0x08145D3A  LSL r1, r1, 0x10   ; r1 = r1 << 16
+0x08145D3C  LSR r1, r1, 0x10   ; r1 = r1 >> 16
+0x08145D3E  LDR r0, 0x08145d54 (=0x0000404B)
+0x08145D40  BL 0x08069290      ; The call that I found via trace log.
+0x08145D44  LDR r0, 0x08145d58 (=0x0000404C)
+0x08145D46  ADD r1, r4, 0x0
+0x08145D48  BL 0x08069290      ; It's called twice!?
+0x08145D4C  POP {r4}
+0x08145D4E  POP (r0}
+0x08145D50  BX r0
+```
+
+```
+08145A98  PUSH {r4,lr}
+08145A9A  BL 0x08040EA4  ; r0 = AdvanceRNG()
+08145A9E  ADD r4, r0, 0x0
+08145AA0  LSL r4, r4, 0x10
+08145AA2  LSR r4, r4, 0x10
+  ; r4 is a 16 bit random number
+08145AA4  BL 0x08040EA4  ; r0 = AdvanceRNG()
+08145AA8  LSL r0, r0, 0x10
+08145AAA  ORR r0, r4     ; r0 = r0 | r4
+  ; r0 is a 32 bit random number
+08145AAC  BL 0x08145D34  ; Writes both r0 and r4 (??) into scratch space
+08145AB0  LDR r0, 0x08145AC0 (=0x00004045)
+08145AB2  MOV r1, 0x0
+08145AB4  BL 0x08069290  ; Also just calls the writer directly
+  ; Write 0 into 0x02026AFE
+08145AB8  POP {r4}
+08145ABA  POP {r0}
+08145ABC  BX r0
+```
+
+Cool, so it is a random number.  I was surprised to see it written as 32 bits when only 16 would be used for the lotto number.  Now, can I find the order of when the RNG call happens?  If it happens before the FID determination, then it's no more useful than TID, but would be easier to use for non-starting day finding.  If it hapens after FID determination, it can be used for precision.
+
+From RNG `0x8736A383` I get 49 advances to `0x10EE`.  Same game has Feebas seed `0xE7F2` with 18 advances away.  So Lotto happens after FID.
+
+24 frames after A press to load game, new lotto determination happens.  FID changes on same frame.  These changed based on pressing A on different frames, so it is RNG.
+
+RNG calls:
+
+* 0x080005B4
+* 0x08145ACA
+* 0x08084C62
+
+Hmmm, why is that all of them...
+
+Has it determined it earlier and is just loading it?  I don't see any write instructions for the relevant values either...
+
+I don't see any frames with suitable chunks of RNG to load this...but it's definitely doing the regular FID generating because the trendy phrase is valid.
+
+```
+PopulateNewDayLottoNumber()
+0x08145AC4  PUSH {r4,r5,lr}
+... r4 = uint16_t r0
+0x08145ACA  BL 0x08040EA4  ; r0 = AdvanceRNG()
+... r1 = uint16_t r0
+0x08145AD2  SUB r0, r4, 0x1  ; r4 appears to be a loop counter in this context
+... r4 = uint16_t r0
+  ; r4--;
+0x08145AD8  LDR r0, 0x08145B00 (=0x0000FFFF)
+0x08145ADA  CMP r4, r0
+0x08145ADC  BEQ 0x08145AF4
+  ; if r4 == -1, write and exit
+0x08145ADE  LDR r5, 0x08145B04 (=0x41C64E6D)
+0x08145AE0  LDR r3, 0x08145B08 (=0x00003039)
+0x08145AE2  ADD r2, r0, 0x0
+  ; r2 = -1
+0x08145AE4  ADD r0, r1, 0x0
+  ; r0 = RNG
+0x08145AE6  MUL r0, r5
+0x08145AE8  ADD r0, r1, r3
+  ; r0 = new RNG, but not quite the same as regular AdvanceRNG
+0x08145AEA  SUB r0, r4, 0x1
+... r4 = uint16_t r0
+  ; r4--
+0x08145AF0  CMP r4, r2
+0x08145AF2  BNE 0x08145AE4
+0x08145AF4  ADD r0, r1, 0x0
+0x08145AF6  BL 0x08145D34  ; Writes r0 into scratch space (documented above)
+0x08145AFA  POP {r4,r5}
+0x08145AFC  POP {r0}
+0x08145AFE  BX r0
+```
+
+So actually 0x08145ACA is the call that sets the new lotto number!  Interesting.  Then is the new FID generated entirely from 0x08084C62 using only a single random number?
+
+```
+0x08084C60  PUSH {lr}
+0x08084C62  BL 0x08040EA4  ; r0 = AdvanceRNG()
+... r0 = uint16_t r0
+0x08084C6A  MOV r1, 0x64  ; r1 = 100
+0x08084C6C  BL 0x081E0F20
+  ; Need to figure out what this is doing.
+... r1 = uint8_t r0
+0x08084C74  ADD r2, r1, 0x0
+0x08084C76  CMP r1, 0x3b  ; 0x3b = 59.  Doesn't ring a bell.
+0x08084C78  BHI 0x08084C7E
+  ; if r1 > 0x3b do ...
+0x08084C7A  MOV r0, 0x0
+0x08084C7C  B 0x08084CB0  ; goto exit
+0x08084C7E  ADD r0, r1, 0x0
+0x08084C80  SUB r0, 0x3c  ; Subtracting 60, actually. 59 + 1
+... r0 = uint8_t r0
+0x08084C86  CMP r0, 0x1d  ; 0x1d = 29.
+0x08084C88  BHI 0x08084C8E
+0x08084C8A  MOV r0, 0x1
+0x08084C8C  B 0x08084CB0
+  ; This kind of block repeated many times
+0x08084C8E  ADD r0, r1, 0x0
+0x08084C90  SUB r0, 0x5a  ; 0x5a = 90.  59 + 1 + 29 + 1
+... r0 = uint8_t r0
+0x08084C96  CMP r0, 0x4
+0x08084C98  BHI 0x08084C9E
+0x08084C9A  MOV r0, 0x2
+0x08084C9C  B 0x08084CB0
+0x08084C9E  ADD r0, r2, 0x0
+0x08084CA0  SUB r0, 0x5F  ; 0x5F = 95.  59 + 1 + 29 + 1 + 4 + 1
+... r0 = uint8_t r0
+0x08084CA6  CMP r0, 0x3
+0x08084CA8  BLS 0x08084CAE
+0x08084CAA  MOV r0, 0x4
+0x08084CAC  B 0x08084CB0
+0x08084CAE  MOV r0, 0x3
+0x08084CB0  POP {r1}
+0x08084CB2  BX r1
+
+; rng = AdvanceRNG() % 100
+; if (rng < 60) {
+;   return 0;
+; } else if (rng < 90) {
+;   return 1;
+; } else if (rng < 95) {
+;   return 2;
+; } else if (rng < 99) {
+;   return 3;
+; } else {
+;   return 4;
+; }
+```
+
+
+I wonder if this is determining which FID index to make the new one?  60% chance to not change?  I could check that.  Also could go one level up to see where this is called from.
+
+```
+0x080854A8  PUSH {r4-r6,lr}
+0x080854AA  ADD r6, r0, 0x0
+0x080854AC  MOV r0, 0x0          ; r0 = 0
+0x080854AE  STRB r0, [r6, 0x0]
+  ; Set r6 to 0 (r6 is what was passed in from r0)
+0x080854B0  BL 0x08084D8C
+  ; Not sure yet
+  ; Likely returns an index of some kind
+...r3 = uint16_t r0
+0x080854B8  LDR r0, [0x08085430] (=0x0000FFFF)
+0x080854BA  CMP r3, r0
+0x080854BC  BEQ 0x080854DA
+  ; if the function call earlier returns -1, goto 0x080854DA
+0x080854BE  LDR r2, [0x080854E4] (=0x0839D46C)
+  ; r2 = 0x0839D46C (is that an address or a codepoint?) used like an address.
+0x080854C0  LSL r1, r3, 0x2    ; r1 = index * 4
+0x080854C2  ADD r1, r1, r3     ; r1 = r1 + index
+0x080854C4  LSL r1, r1, 0x2    ; r1 = r1 * 4
+  ; r1 = 20 * index
+0x080854C6  ADD r0, r2, 0x4    ; r0 = r2 + 4
+0x080854C8  ADD r0, r1, r0     ; r0 = r1 + r0
+  ; r0 = address + 4 + 20*index
+0x080854CA  LDR r5, [r0, 0x0]  ; r5 = *r0
+0x080854CC  ADD r2, 0x8        ; r2 = r2 + 8
+0x080854CE  ADD r1, r1, r2     ; r1 = r1 + r2
+  ; r1 = address + 8 + 20*index
+0x080854D0  LDR r4, [r1, 0x0]  ; r4 = *r1
+  ; so r4 and r5 are 2 consecutive words in memory
+  ; more over, they're used as addresses themselves
+0x080854D2  CMP r5, 0x0
+0x080854D4  BNE 0x080854E8
+  ; if r5 != 0, goto 0x080854E8
+0x080854D6  CMP r4, 0x0
+0x080854D8  BNE 0x080854EE
+  ; if r5 == 0 && r4 != 0, goto 0x080854EE
+0x080854DA  MOV r0, 0x0        ; r0 = 0
+0x080854DC  B 0x0808552E
+  ; if r5 == 0 && r4 == 0, return 0;
+... data
+0x080854E8  CMP r4, 0x0
+0x080854EA  BNE 0x08085520
+  ; if r5 !=0 && r4 != 0, goto 0x08085520
+0x080854EC  B 0x08085520
+  ; otherwise goto to the same instruction
+  ; just...why
+0x080854EE  MOV r0, 0x1         ; r0 = 1
+0x080854F0  STRB r0, [r6, 0x0]  ; *r6 = 1
+0x080854F2  BL 0x08084C60       ; r0 = rand[0,4] weighted low
+0x080854F6  LSL r0, r0, 0x18    ; r0 <<= 24
+0x080854F8  LDR r1, [r4, 0x4]   ; r1 = *(r4 + 4)
+0x080854FA  B 0x08085528        ; jump to finishing statements
+  ;
+  ; from here
+0x080854FC  BL 0x08040EA4       ; AdvanceRNG(), but this can literally never be called
+... r0 = uint16_t r0
+0x08085504  MOV r1, 0x64
+0x08085506  BL 0x081E0F20
+... r0 = uint16_t r0
+0x0808550E  CMP r0, 0x4f
+0x08085510  BLS 0x08085520
+0x08085512  MOV r0, 0x1
+0x08085514  STRB r0, [r6, 0x0]
+0x08085516  BL 0x08084C60       ; r0 = rand[0,4] weighted low
+0x0808551A  LSL r0, r0, 0x18
+0x0808551C  LDR r1, [r4, 0x4]
+0x0808551E  B 0x08085528
+  ;
+  ; to here, not sure how this can be executed.
+0x08085520  BL 0x08084BA4
+  ; Not sure yet
+  ; But this skips over the rand number generation, so I'm fairly certain this is no the code path we're interested in.
+0x08085524  LSL r0, r0, 0x18
+0x08085526  LDR r1, [r5, 0x4]
+0x08085528  LSR r0, r0, 0x16    ; r0 >>= 22
+  ; previous calls shifted this left 24, so this is effectively 4*r0, as an 8 bit number
+0x0808552A  ADD r0, r0, r1      ; r0 += r1
+0x0808552C  LDRH r0, [r0, 0x2]  ; r0 = *(r0 + 2)
+  ; where r0 is r4 + 2 + 4*rand
+0x0808552E  POP {r4-r6}
+0x08085530  POP {r1}
+0x08085532  BX r1
+
+In practive my execution had r4 = 0x0839B604, which loaded into r1 0x0839B5F0, and r0 was 0 (60% chance).  The last load set r0 to 0x48.  Immediately after the function return 0x48 got stored into 0x02029814.  I have nothing setup to watch that address, so I don't know what it is. 0x0300 is usually scratch space though, while 0x0202 is persistent, so it doesn't look like this RNG is being used for anything :(
+```
+
+Looking a little more closely at the full memory map when the FID changes on day change:  The comparators change!  And then after they do, the FIDs are reordered, so the Feebas Seed and trendy phrases stay the same but get put into different places.  Interesting!  So if you never change the trendy phrase, I wonder if that means you can perpetually get the same 5 trendy phrases cycling in Dewford, and the same fishing spots cycling for Feebas.  At the same time, there's not enough RNG happening to change the compartors via randomness.  Is there really a deterministic way these swap through days?
+
+So with dry battery, you actually have a really easy path to determint the Feebas seed on any day.  The trainer ID is perserved as knowledge of what RNG was when all the FIDs were generated, so you just have to find which FID generated the trendy phrase that you have today and read the same Feebas seed.
+
+With live battery things are still a bit tricky because there's more options for what RNG generated the trainer ID.  But if you oberve the trendy phrases over multiple days, you could probably narrow it down and determine which starting seed could generate both.  My experiments showed you can narrow it down to ~25 seeds with just 1 day's knowledge.  And since there are much more than 25 possible trendy phrases, I'd wager you only need to see 2 days to get almost perfect knowledge of the Feebas seed.
+
+With live battery in the context of speedrun, you'd still have to use the lotto number as the determining factor in which is the true seed.

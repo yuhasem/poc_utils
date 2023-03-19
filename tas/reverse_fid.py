@@ -47,13 +47,15 @@ def searchAt(seed, index1, list2, index2):
         candidates.sort()
         if candidateMatches(candidates[0], index1, list2, index2):
             fidMatches.add(candidates[0].FID)
-    return fidMatches
+    return fidMatches, nextSeed
 
 
 def main():
-    trainerId = 59900
-    firstWord = 'WELL'
-    secondWord = 'DESIGN'
+    trainerId = 26748
+    firstWord = 'KIND'
+    secondWord = 'SPORTS'
+    dryBattery = False
+    lottoNumber = 4334
     
     firstIndex = CONDITIONS.index(firstWord.upper())
     if secondWord in LIFESTYLE:
@@ -67,12 +69,24 @@ def main():
     numMatches = 0
     for i in range(1 << 16):
         seed = topTID + i
-        matches = searchAt(seed, firstIndex, secondList, secondIndex)
+        matches, seed = searchAt(seed, firstIndex, secondList, secondIndex)
         if len(matches) > 0:
             numMatches += len(matches)
             print('Potential seed @ i = %d with %s matches' % (i, matches))
+            count = 0
+            while rng.top(seed) != lottoNumber:
+                count += 1
+                seed = rng.advanceRng(seed, 1)
+            print ("\t%d advances to lotto" % count)
     print('Total matches = %d' % numMatches)
 
 
 if __name__ == '__main__':
     main()
+    # rand = 0x8736A383
+    # i = 0
+    # while rng.top(rand) != 0xE7F2:
+    #     i += 1
+    #     rand = rng.advanceRng(rand, 1)
+    #     print(i)
+    # print("found")

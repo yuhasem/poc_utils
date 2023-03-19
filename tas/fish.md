@@ -319,3 +319,24 @@ Ok, fuck it, this is too complicated.  Maybe it really is just a 50/50 and odd =
 0xE2B9 -> Failure
 
 Looks right to me!
+
+# Extra RNG
+
+Okay, so while walking through Granite Cave there's randomly frames that are burning 9+ RNG advances and I don't know from what.  But at this particular point I need to burn as many as possible so might as well see if I can trigger this as much as possible.
+
+Trace log shows the following (non V-Blank) points:
+
+* 0x0805CF26
+* 0x0805CEA2
+* 0x0805CF26
+* 0x0805CEA2
+* 0x0805CF26
+* 0x0805CEA2
+* 0x0805CF26
+* 0x0805CEA2
+* 0x0805CF26
+* 0x0805CEA2
+
+So it looks like one function that gets iterated through at least up to 5 times.
+
+0x0805CF26 is using RNG to read something off the stack.  oh god why...
