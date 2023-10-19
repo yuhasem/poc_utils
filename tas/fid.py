@@ -31,36 +31,52 @@ class Candidate():
     
     def __str__(self):
         return '{FID:X} with lower swap {swap}'.format(FID=self.FID, swap=(self.swapper & 0x3F))
+    
+    def __repr__(self):
+        return '%x,%x,%x,%x' % (self.swapper, self.FID, self.firstTrendyWord, self.secondTrendyWord)
         
 
 def getTrendyWord(seed, index):
     "The half-word which describes a word to put in the trendy phrase."
     max_num = MAX_NUMBERS[index]
     seed = rng.advanceRng(seed, 1)
+    print("trendy word with list %s and seed %x" % (index, seed))
     value = rng.top(seed) % max_num
+    print("index %s" % value)
     index = (index & 0x7F) << 9
     result = value & 0x1FF
     return (seed, index | result)
 
 def getComparator(seed, injectVblank):
-    """The half-word which is used to compare candidates."""
+    """The half-word which is used to compare candidates.
+    
+    There is a small difference in this code between Ruby and Sapphire.  Needs
+    more investigation to know if there's an actualy difference in
+    functionality."""
     # I have no idea why this individual bit needs it's own RNG call.
     seed = rng.advanceRng(seed, 1)
     halfword = 0 if rng.top(seed) & 1 == 0 else 0x40
+    print("starting comparator %s" % halfword)
     
     if injectVblank == 4:
         seed = rng.advanceRng(seed, 1)
     # This is how is makes a variable number of RNG calls.
     seed = rng.advanceRng(seed, 1)
+    print("%x" % seed)
     if rng.top(seed) % 0x62 > 0x32:
+        print("continue")
         if injectVblank == 5:
             seed = rng.advanceRng(seed, 1)
         seed = rng.advanceRng(seed, 1)
+        print("%x" % seed)
         if rng.top(seed) % 0x62 > 0x50:
+            print("continue")
             if injectVblank == 6:
                 seed = rng.advanceRng(seed, 1)
             seed = rng.advanceRng(seed, 1)
+            print("%x" % seed)
     rand = rng.top(seed) % 0x62
+    print("final rand %x" % rand)
     top7 = rand + 0x1E
     # The game also does a & 0x7F here, but we're guaranteed not to lose
     # information even without it.
@@ -74,6 +90,7 @@ def getComparator(seed, injectVblank):
     # random number between 0 and a random number.
     bottom7 = rng.top(seed) % (rand + 1)
     bottom7 += 0x1E
+    print("bottom rand %x" % bottom7)
     # Again the game does a & 07F, but again we don't lose information.
     halfword |= bottom7
     # bit 6 is now the random number from the top or'ed with this new random
@@ -96,7 +113,9 @@ def generateCandidateFID(seed, injectVblank=-1):
     if injectVblank == 1:
         seed = rng.advanceRng(seed, 1)
     seed = rng.advanceRng(seed, 1)
+    print("%x" % rng.top(seed))
     nextIndex = 0xD if rng.top(seed) & 1 == 0 else 0xC
+    print("picked random list %s" % nextIndex)
     
     if injectVblank == 2:
         seed = rng.advanceRng(seed, 1)
@@ -134,11 +153,11 @@ def generateFID(seed):
     
 
 def main():
-    seed = 0x6529CF57
-    seed = rng.advanceRng(seed, 77)
+    seed = 0xAFCBA65D
     seed = rng.advanceRng(seed, 2)  # Either 1 or 2
-    saveSeed = seed
-    generateFID(seed)
+    print("%x " % seed)
+    print(generateCandidateFID(seed, 0))
+    
     # for i in range(45):
     #     saveSeed = rng.advanceRng(saveSeed, 1)
     #     print("%x" % (rng.top(saveSeed)))

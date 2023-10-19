@@ -459,7 +459,7 @@ Going up one step. To understand 0x080FA19C there is one more subroutine 0x080FA
 0x080FA764  BL 0x08040EA4     ; r0 = AdvanceRNG()
 ... uint16_t r0;
 0x080FA76C  MOV r1, #0x62
-0x080FA76E  BL 0x081E0EB0     ; r0 = UnsignedRemainder(RNG, 0x62)
+0x080FA76E  BL 0x081E0EB0     ; r0 = UnsignedRemainder(RNG, 0x62)  ; NOTE: In Ruby, this is a call to 0x081E0F20 instead
 ... uint16_t r4 = r0;
 0x080FA776  CMP r4, #0x32
 0x080FA778  BLS 0x080FA7A2    ; BLS = Branch unsigned lower or same
@@ -467,7 +467,7 @@ Going up one step. To understand 0x080FA19C there is one more subroutine 0x080FA
 0x080FA77A  BL 0x08040EA4     ; r0 = AdvanceRNG()
 ... uint16_t r0;
 0x080FA782  MOV r1, #0x62
-0x080FA784  BL 0x081E0EB0
+0x080FA784  BL 0x081E0EB0     ; NOTE: In Ruby, this is a call to 0x081E0F20 instead
 ... uint16_t r4 = r0;
 0x080FA78C  CMP r4, #0x50
 0x080FA78E  BLS 0x080FA7A2
@@ -475,7 +475,7 @@ Going up one step. To understand 0x080FA19C there is one more subroutine 0x080FA
 0x080FA790  BL 0x08040EA4     ; r0 = AdvanceRNG()
 ... uint16_t r0;
 0x080FA798  MOV r1, #0x62
-0x080FA79A  BL 0x081E0EB0
+0x080FA79A  BL 0x081E0EB0    ; NOTE: In Ruby, this is a call to 0x081E0F20 instead
 ... uint16_t r4 = r0;
     ; r4 = rand[0, #0x62)
     ; LABEL: Done-with-rng
@@ -499,7 +499,7 @@ Going up one step. To understand 0x080FA19C there is one more subroutine 0x080FA
 ... uint16_t r0;
 0x080FA7BE  ADD r1, r4, #0x1
     ; r1 = rand[0x1, 0x63)
-0x080FA7C0  BL 0x081E0920     ; r0 = Remainder(r0, r1)
+0x080FA7C0  BL 0x081E0920     ; r0 = Remainder(r0, r1)   ; Note: In Ruby this is a call to 0x081E0990 instead.
     ; r0 = RNG % rand[0x1, 0x63)
 0x080FA7C4  ADD r0, #0x1E     ; r0 += 30
     ; r0 = rand[0, 0x80)
@@ -1544,3 +1544,11 @@ So with dry battery, you actually have a really easy path to determint the Feeba
 With live battery things are still a bit tricky because there's more options for what RNG generated the trainer ID.  But if you oberve the trendy phrases over multiple days, you could probably narrow it down and determine which starting seed could generate both.  My experiments showed you can narrow it down to ~25 seeds with just 1 day's knowledge.  And since there are much more than 25 possible trendy phrases, I'd wager you only need to see 2 days to get almost perfect knowledge of the Feebas seed.
 
 With live battery in the context of speedrun, you'd still have to use the lotto number as the determining factor in which is the true seed.
+
+One more note.  It seems that entering the game on different frames doesn't change which FID gets swapped into the top spot.  Matches with the fact that I don't see a RNG call for the swap.  I wonder if it's always the same swap?  [0,1,2,3,4] -> [1,3,0,4,2].  That would cycle through all 5 over 5 days.  Now the question is whether that literally cycles infinitely, or if it regenerates it at some point.
+
+More experimentation!
+
+It does not cycle regularly.  It modifes the Comparator part of the FID deterministically based on date, but then just re-sorts them, such that the FID0 is not guaranteed to change, and sometimes the other FIDs swap.  The comparator changes seem fairly stable around date, like it's just some simple addition happening here (and mostly to the lower bits with the upper bits remaining unchanged).
+
+I'd also like to close on what happens to the FIDs when you change Trendy Phrase.
