@@ -8,13 +8,13 @@ Be wary of lag frames.
 """
 
 MAX_PRINTS = 50
-MAX_SEARCHES = 100000
+MAX_SEARCHES = 10000
 
 import rng
 
-def PassesFilters(poke, filters):
+def PassesFilters(seed, poke, filters):
     for filter in filters:
-        if not filter(poke):
+        if not filter(poke, seed=seed):
             return False
     return True
 
@@ -29,7 +29,7 @@ def FindWildPokemon(seed, density, min_slot, max_slot, filters=[]):
             or rng.top(tryseed) % 100 >= max_slot):
             continue
         poke = rng.WildPokemon(tryseed)
-        if not PassesFilters(poke, filters):
+        if not PassesFilters(tryseed, poke, filters):
             continue
         print("At offset", i, "found", poke)
         prints += 1
@@ -62,19 +62,24 @@ def AronAttack(dude):
 
 def AronAbility(aron):
     return aron.pid % 2 == 1
+
+def MoonStone(lunatone, **kwargs):
+    item = rng.heldItem(kwargs['seed'], lunatone, rng.METEOR_FALLS_ANIMATION, 3)
+    return item[0] >= 95
         
 
 def main():
     # Finding a chad zigzagoon for 6 pickup uptime slots
     # seed = 0x1709c8ca
-    seed = 0xbbed1772
+    seed = 0xA6FECC9
     # FindWildPokemon(seed, 320, 94, 98, [ZigChadNature, ZigChadAttack, ZigChadSpeed])
-    print("Geodude")
-    FindWildPokemon(seed, 2880, 99, 100, [GeoDudeNature, GeoDudeAttack])
+    # print("Geodude")
+    # FindWildPokemon(seed, 2880, 99, 100, [GeoDudeNature, GeoDudeAttack])
     # print("oh no")
     # FindWildPokemon(seed, 160, 99, 100, [GeoDudeNature2, GeoDudeAttack2])
-    print("Aron")
-    FindWildPokemon(seed, 160, 60, 70, [GeoDudeNature, AronAttack, AronAbility])
+    # print("Aron")
+    # FindWildPokemon(seed, 160, 60, 70, [GeoDudeNature, AronAttack, AronAbility])
+    FindWildPokemon(seed, 160, 70, 89, [MoonStone])
 
 if __name__ == '__main__':
     main()
