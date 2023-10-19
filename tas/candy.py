@@ -31,7 +31,7 @@ import math
 # In reality this varies a lot based on level situation.  A more complicated
 # model would be needed to take that into account, which I'm not going to build
 # right now.
-LOWEST_RNG_ADVANCES_PER_BATTLE = 1700
+LOWEST_RNG_ADVANCES_PER_BATTLE = 1850
 
 FRAMES_TO_GET_IN_MENU = 124
 # Assumes 1 character poke name, 1 input to get to the poke, and 10 characters
@@ -39,22 +39,22 @@ FRAMES_TO_GET_IN_MENU = 124
 FRAMES_TO_TAKE_ITEM = 49
 
 # Section 1: 1984 frames, rounded up because NPC RNG frames
-# Section 2: Not measured yet
+# Section 2: Not measured yet (not needed)
 FRAMES_TO_HEAL = 2000
 # Zigzagoon with Tackle (35), Cut (30), and Headbutt (15)
 # Aron with Tackle (35), Headbutt (15), Metal Claw (35), and Mud Slap (10)
 # Geodude with Tackle (35), Rock Throw (15), Magnitude (30), and Rock Tomb (10)
-INITIAL_PP = 95
-MAX_PP = 95
+INITIAL_PP = 50
+MAX_PP = 50
 
-INITIAL_SEED = 0xBAAE5A7F
+INITIAL_SEED = 0xA475F7C8
 MAX_PARTY_SIZE = 5
 
 # Alter this for what you're looking for.
 TO_FIND = {
     # Overestimate of candies because I really just want to get Aron as much XP
     # as possible and overgrind the candies with Geodude.
-    'Rare Candy': 88,
+    'Rare Candy': 21,
     # Forgoing Ultra Balls because it's probably faster to just buy balls in
     # a mart.  But still check if we can pick up any for free in the route.
     # 'Ultra Ball': 10,
@@ -122,18 +122,36 @@ def GoodFrames(seed, partySize, framesToSearch):
             steps += advSteps
         else:
             steps += 1
+            
+def TripleCandy(seed, partySize, framesToSearch):
+    steps = 0
+
+    while steps < framesToSearch:
+        thisSeed = rng.advanceRng(seed, steps)
+        pickups, advSteps = PickupReturn(thisSeed, partySize)
+        candies = pickups.get('Rare Candy', 0)
+        balls = pickups.get('Ultra Ball', 0)
+        if (candies + balls) >= 3:
+            print('BEST FRAME: Advance %d and get %s' % (steps, pickups))
+        elif (candies + balls) == 2:
+            print('FRAME: Advance %d and get %s' % (steps, pickups))
+        if advSteps > 0:
+            steps += advSteps
+        else:
+            steps += 1
 
 
 class Action():
     
-    def __init__(self, action, advances):
+    def __init__(self, action, advances, extra):
         """action: str = which action (Menu/Battle).
         advances: int = how many rng advacnes to wait."""
         self.action = action
+        self.extra = extra
         self.advances = advances
         
     def __str__(self):
-        return "%s for %s" % (self.action, self.advances)
+        return "%s (%s) for %s" % (self.action, self.extra, self.advances)
     
     def __repr__(self):
         return str(self)
@@ -225,7 +243,7 @@ def main():
             newActions = []
             for action in node.actions:
                 newActions.append(action)
-            newActions.append(Action('M', menuFrames(node.partyItems)))
+            newActions.append(Action('M', menuFrames(node.partyItems), ''))
             newAdvances = node.advances + menuFrames(node.partyItems)
             
             # Check if this new node has already been explored at the same or
@@ -255,7 +273,7 @@ def main():
             newActions = []
             for action in node.actions:
                 newActions.append(action)
-            newActions.append(Action('H', FRAMES_TO_HEAL))
+            newActions.append(Action('H', FRAMES_TO_HEAL, ''))
             newAdvances = node.advances + FRAMES_TO_HEAL
             heapq.heappush(pq, Node(newItems, node.partyItems, newAdvances, newActions))
             if pp_spent == pp_compare:
@@ -297,7 +315,8 @@ def main():
             newActions = []
             for action in node.actions:
                 newActions.append(action)
-            newActions.append(Action('B', LOWEST_RNG_ADVANCES_PER_BATTLE + oldSteps))
+            summary = str(pickups['Rare Candy']) + 'RC/' + str(numTotalPickups)
+            newActions.append(Action('B', LOWEST_RNG_ADVANCES_PER_BATTLE + oldSteps, summary))
             newPartyItems = node.partyItems + numTotalPickups
             newAdvances = node.advances + LOWEST_RNG_ADVANCES_PER_BATTLE + oldSteps + 120
 
@@ -306,7 +325,7 @@ def main():
                 newPartySize = 0
                 print ('uh oh')
             if newPartySize == 0:
-                newActions.append(Action('M', menuFrames(MAX_PARTY_SIZE)))
+                newActions.append(Action('M', menuFrames(MAX_PARTY_SIZE), ''))
                 newAdvances += menuFrames(MAX_PARTY_SIZE)
                 newPartyItems = 0
                 
@@ -326,5 +345,6 @@ def main():
             
 if __name__ == '__main__':
     # main()
-    seed = rng.advanceRng(0xc40b7e38, 1800)
-    GoodFrames(seed, 5, 100)
+    # seed = rng.advanceRng(0xBEF7CFE9, 0)
+    # GoodFrames(seed, 4, 900)
+    TripleCandy(0x56FC8F33, 4, 20000)
