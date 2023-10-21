@@ -143,18 +143,31 @@ def TripleCandy(seed, partySize, framesToSearch):
 
 class Action():
     
-    def __init__(self, action, advances, extra):
+    def __init__(self, action, advances):
         """action: str = which action (Menu/Battle).
         advances: int = how many rng advacnes to wait."""
         self.action = action
-        self.extra = extra
         self.advances = advances
         
     def __str__(self):
-        return "%s (%s) for %s" % (self.action, self.extra, self.advances)
+        return "%s for %s" % (self.action, self.advances)
     
     def __repr__(self):
         return str(self)
+    
+    
+class Battle(Action):
+    
+    def __init__(self, advances, candies, pickups, pid, pidDelay):
+        self.action = 'B'
+        self.advances = advances
+        self.candies = candies
+        self.pickups = pickups
+        self.pid = pid
+        self.pidDelay = pidDelay
+        
+    def __str__(self):
+        return f"{self.action} (pid {self.pid} in {self.pidDelay}) for {self.advances} ({self.candies}RC/{self.pickups})"
 
 
 class Node():
@@ -225,35 +238,37 @@ def hashableInventory(items, partyItems):
 def nextNodeFromMenuAction(node):
     newItems = copyItems(node.items)
     newActions = copyActions(node.actions)
-    newActions.append(Action('M', menuFrames(node.partyItems), ''))
+    newActions.append(Action('M', menuFrames(node.partyItems)))
     newAdvances = node.advances + menuFrames(node.partyItems)
     
     return Node(newItems, 0, newAdvances, newActions)
 
 
 def nextNodeFromHealAction(node):
-    newItems = copyItems(node.items)
     newActions = copyActions(node.actions)
-    newActions.append(Action('H', FRAMES_TO_HEAL, ''))
+    newActions.append(Action('H', FRAMES_TO_HEAL))
     newAdvances = node.advances + FRAMES_TO_HEAL
     
-    return Node(newItems, node.partyItems, newAdvances, newActions)
+    return Node(node.items, node.partyItems, newAdvances, newActions)
 
 
 def nextNodeFromBattleAction(node, steps, pickup, total):
     newItems = copyItems(node.items)
     for item in pickup:
         newItems[item] = newItems.get(item, 0) + pickup[item]
-    newActions = []
-    for action in node.actions:
-        newActions.append(action)
-    summary = str(pickup['Rare Candy']) + 'RC/' + str(total)
-    newActions.append(Action('B', LOWEST_RNG_ADVANCES_PER_BATTLE + steps, summary))
+    newActions = copyActions(node.actions)
+    newActions.append(
+        Battle(
+            LOWEST_RNG_ADVANCES_PER_BATTLE + steps,
+            pickup.get('Rare Candy', 0),
+            total,
+            0,
+            0))
     newPartyItems = node.partyItems + total
     newAdvances = node.advances + LOWEST_RNG_ADVANCES_PER_BATTLE + steps + 120
     
     if newPartyItems == MAX_PARTY_SIZE:
-        newActions.append(Action('M', menuFrames(MAX_PARTY_SIZE), ''))
+        newActions.append(Action('M', menuFrames(MAX_PARTY_SIZE)))
         newAdvances += menuFrames(MAX_PARTY_SIZE)
         newPartyItems = 0
 
