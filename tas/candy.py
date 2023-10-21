@@ -31,7 +31,7 @@ import math
 # In reality this varies a lot based on level situation.  A more complicated
 # model would be needed to take that into account, which I'm not going to build
 # right now.
-LOWEST_RNG_ADVANCES_PER_BATTLE = 1850
+LOWEST_RNG_ADVANCES_PER_BATTLE = 1600
 
 FRAMES_TO_GET_IN_MENU = 124
 # Assumes 1 character poke name, 1 input to get to the poke, and 10 characters
@@ -43,18 +43,18 @@ FRAMES_TO_TAKE_ITEM = 49
 FRAMES_TO_HEAL = 2000
 # Zigzagoon with Tackle (35), Cut (30), and Headbutt (15)
 # Aron with Tackle (35), Headbutt (15), Metal Claw (35), and Mud Slap (10)
-# Geodude with Tackle (35), Rock Throw (15), Magnitude (30), and Rock Tomb (10)
+# Geodude with Tackle (35), Rock Throw (15), Magnitude (30)
 INITIAL_PP = 50
 MAX_PP = 50
 
-INITIAL_SEED = 0xA475F7C8
-MAX_PARTY_SIZE = 5
+INITIAL_SEED = 0
+MAX_PARTY_SIZE = 6
 
 # Alter this for what you're looking for.
 TO_FIND = {
     # Overestimate of candies because I really just want to get Aron as much XP
     # as possible and overgrind the candies with Geodude.
-    'Rare Candy': 21,
+    'Rare Candy': 50,
     # Forgoing Ultra Balls because it's probably faster to just buy balls in
     # a mart.  But still check if we can pick up any for free in the route.
     # 'Ultra Ball': 10,
@@ -199,9 +199,17 @@ class Node():
         return self.f() < other.f()
 
 
-def copyItems(fromO, toO):
+def copyItems(original):
+    copy = {}
     for item in ['Rare Candy', 'Protein', 'Ultra Ball', 'PP Up', 'Nugget']:
-        toO[item] = fromO[item]
+        copy[item] = original.get(item, 0)
+    return copy
+
+def copyActions(original):
+    copy = []
+    for action in original:
+        copy.append(action)
+    return copy
         
 def menuFrames(n):
     return FRAMES_TO_GET_IN_MENU + n*FRAMES_TO_TAKE_ITEM
@@ -212,6 +220,94 @@ def hashableInventory(items, partyItems):
     for item in ['Rare Candy', 'Protein']:  # , 'Ultra Ball', 'PP Up', 'Nugget'
         s += item + str(items.get(item, 0))
     return s
+
+
+def nextNodeFromMenuAction(node):
+    newItems = copyItems(node.items)
+    newActions = copyActions(node.actions)
+    newActions.append(Action('M', menuFrames(node.partyItems), ''))
+    newAdvances = node.advances + menuFrames(node.partyItems)
+    
+    return Node(newItems, 0, newAdvances, newActions)
+
+
+def nextNodeFromHealAction(node):
+    newItems = copyItems(node.items)
+    newActions = copyActions(node.actions)
+    newActions.append(Action('H', FRAMES_TO_HEAL, ''))
+    newAdvances = node.advances + FRAMES_TO_HEAL
+    
+    return Node(newItems, node.partyItems, newAdvances, newActions)
+
+
+def nextNodeFromBattleAction(node, steps, pickup, total):
+    newItems = copyItems(node.items)
+    for item in pickup:
+        newItems[item] = newItems.get(item, 0) + pickup[item]
+    newActions = []
+    for action in node.actions:
+        newActions.append(action)
+    summary = str(pickup['Rare Candy']) + 'RC/' + str(total)
+    newActions.append(Action('B', LOWEST_RNG_ADVANCES_PER_BATTLE + steps, summary))
+    newPartyItems = node.partyItems + total
+    newAdvances = node.advances + LOWEST_RNG_ADVANCES_PER_BATTLE + steps + 120
+    
+    if newPartyItems == MAX_PARTY_SIZE:
+        newActions.append(Action('M', menuFrames(MAX_PARTY_SIZE), ''))
+        newAdvances += menuFrames(MAX_PARTY_SIZE)
+        newPartyItems = 0
+
+    return Node(newItems, newPartyItems, newAdvances, newActions)
+
+
+def shouldAbandonState(node: Node, bestSeen: dict) -> bool:
+    """Checks whether `node` can be abandoned
+
+    Parameters
+    ----------
+    node : Node
+        The node to investigate if it can be abandoned.
+    bestSeen : TYPE
+        A dict from inventories to the smallest number of frames to reach that
+        inventory.
+
+    Returns
+    -------
+    bool
+        Whether the state can be abandoned because a better state has already
+        been investigated.
+
+    """
+    inv = hashableInventory(node.items, node.partyItems)
+    seen = bestSeen.get(inv, BIG_NUMBER)
+    bestSeen[inv] = min(node.advances, seen)
+    return node.advances >= seen
+
+
+def shouldConsiderHeal(node: Node):
+    """first return is when to consdier a heal, second return is when heal is
+    forced."""
+    pp_spent = 0
+    pp_compare = INITIAL_PP
+    for i in range(len(node.actions) - 1, -1, -1):
+        if node.actions[i].action == "H":
+            pp_compare = MAX_PP
+            break
+        if node.actions[i].action == "B":
+            pp_spent += 1
+    return pp_spent > pp_compare - 10, pp_spent == pp_compare
+
+
+def usefulAndTotalPickups(pickup, node):
+    """Depends on the node because some pickups only matter if you haven't
+    got everything you need in that category."""
+    numUsefulPickups = 0
+    numTotalPickups = 0
+    for item in pickup.keys():
+        numTotalPickups += pickup.get(item)
+        if item in TO_FIND and node.items.get(item, 0) < TO_FIND.get(item):
+            numUsefulPickups += pickup.get(item)
+    return numUsefulPickups, numTotalPickups
 
 
 def main():
@@ -238,45 +334,18 @@ def main():
             break
         # If there are any items on the party, consider removing them
         if node.partyItems > 0:
-            newItems = {}
-            copyItems(node.items, newItems)
-            newActions = []
-            for action in node.actions:
-                newActions.append(action)
-            newActions.append(Action('M', menuFrames(node.partyItems), ''))
-            newAdvances = node.advances + menuFrames(node.partyItems)
+            newNode = nextNodeFromMenuAction(node)
             
-            # Check if this new node has already been explored at the same or
-            # earlier frame.
-            inv = hashableInventory(newItems, 0)
-            seen = bestSeen.get(inv, BIG_NUMBER)
-            if newAdvances >= seen:
-                # Note that if we're equal we also abandon this state. Something
-                # else has already investigated from this position (or better) so
-                # we don't need to contine.
+            if shouldAbandonState(newNode, bestSeen):
                 continue
-            bestSeen[inv] = newAdvances
             
-            heapq.heappush(pq, Node(newItems, 0, newAdvances, newActions))
-        pp_spent = 0
-        pp_compare = INITIAL_PP
-        for i in range(len(node.actions) - 1, -1, -1):
-            if node.actions[i].action == "H":
-                pp_compare = MAX_PP
-                break
-            if node.actions[i].action == "B":
-                pp_spent += 1
-        if pp_spent > pp_compare - 10:
+            heapq.heappush(pq, newNode)
+            
+        consider, forced = shouldConsiderHeal(node)
+        if consider:
             # We're almost out of PP, consider healing
-            newItems = {}
-            copyItems(node.items, newItems)
-            newActions = []
-            for action in node.actions:
-                newActions.append(action)
-            newActions.append(Action('H', FRAMES_TO_HEAL, ''))
-            newAdvances = node.advances + FRAMES_TO_HEAL
-            heapq.heappush(pq, Node(newItems, node.partyItems, newAdvances, newActions))
-            if pp_spent == pp_compare:
+            heapq.heappush(pq, nextNodeFromHealAction(node))
+            if forced:
                 # We must heal.  Don't consider anything else for this node.
                 continue
 
@@ -298,53 +367,19 @@ def main():
             else:
                 steps += 1
 
-            numTotalPickups = 0
-            numUsefulPickups = 0
-            newItems = {}
-            for item in ['Rare Candy', 'Protein', 'Ultra Ball', 'PP Up', 'Nugget']:
-                numTotalPickups += pickups.get(item, 0)
-                newItems[item] = node.items.get(item, 0) + pickups.get(item, 0)
-                if node.items.get(item, 0) < TO_FIND.get(item, 0):
-                    numUsefulPickups += pickups.get(item, 0)
+            useful, total = usefulAndTotalPickups(pickups, node)
             # We didn't find anything good, so don't bother recording this action.
-            if numUsefulPickups == 0:
+            if useful == 0:
                 continue
-            # Don't forget to count useless pickups because it still affects party size!
-            numTotalPickups += pickups.get('useless', 0)
 
-            newActions = []
-            for action in node.actions:
-                newActions.append(action)
-            summary = str(pickups['Rare Candy']) + 'RC/' + str(numTotalPickups)
-            newActions.append(Action('B', LOWEST_RNG_ADVANCES_PER_BATTLE + oldSteps, summary))
-            newPartyItems = node.partyItems + numTotalPickups
-            newAdvances = node.advances + LOWEST_RNG_ADVANCES_PER_BATTLE + oldSteps + 120
-
-            newPartySize = party - numTotalPickups
-            if newPartySize < 0:
-                newPartySize = 0
-                print ('uh oh')
-            if newPartySize == 0:
-                newActions.append(Action('M', menuFrames(MAX_PARTY_SIZE), ''))
-                newAdvances += menuFrames(MAX_PARTY_SIZE)
-                newPartyItems = 0
-                
-            # Check if this new node has already been explored at the same or
-            # earlier frame.
-            inv = hashableInventory(newItems, newPartyItems)
-            seen = bestSeen.get(inv, BIG_NUMBER)
-            if newAdvances >= seen:
-                # Note that if we're equal we also abandon this state. Something
-                # else has already investigated from this position (or better) so
-                # we don't need to contine.
+            battleNode = nextNodeFromBattleAction(node, oldSteps, pickups, total)
+            if shouldAbandonState(battleNode, bestSeen):
                 continue
-            bestSeen[inv] = newAdvances
-
-            heapq.heappush(pq, Node(newItems, newPartyItems, newAdvances, newActions))
+            heapq.heappush(pq, battleNode)
 
             
 if __name__ == '__main__':
-    # main()
+    main()
     # seed = rng.advanceRng(0xBEF7CFE9, 0)
     # GoodFrames(seed, 4, 900)
-    TripleCandy(0x56FC8F33, 4, 20000)
+    # TripleCandy(0x56FC8F33, 4, 20000)
