@@ -172,7 +172,7 @@ class Battle(Action):
 
 class Node():
     
-    def __init__(self, items, partyItems, advances, actions):
+    def __init__(self, items, partyItems, advances, actions, pp):
         """
         Parameters
         ----------
@@ -185,11 +185,14 @@ class Node():
             How many rng advances happened to get to this node.
         actions: List[Action]
             Actions taken to get to this node (result).
+        pp : int
+            How much pp is remaining
         """
         self.items = items
         self.partyItems = partyItems
         self.advances = advances
         self.actions = actions
+        self.pp = pp
         
     def heuristic(self):
         """Returns an underestimate of the number of frames it will take to
@@ -241,7 +244,7 @@ def nextNodeFromMenuAction(node):
     newActions.append(Action('M', menuFrames(node.partyItems)))
     newAdvances = node.advances + menuFrames(node.partyItems)
     
-    return Node(newItems, 0, newAdvances, newActions)
+    return Node(newItems, 0, newAdvances, newActions, node.pp)
 
 
 def nextNodeFromHealAction(node):
@@ -249,7 +252,7 @@ def nextNodeFromHealAction(node):
     newActions.append(Action('H', FRAMES_TO_HEAL))
     newAdvances = node.advances + FRAMES_TO_HEAL
     
-    return Node(node.items, node.partyItems, newAdvances, newActions)
+    return Node(node.items, node.partyItems, newAdvances, newActions, MAX_PP)
 
 
 def nextNodeFromBattleAction(node, steps, pickup, total):
@@ -272,7 +275,7 @@ def nextNodeFromBattleAction(node, steps, pickup, total):
         newAdvances += menuFrames(MAX_PARTY_SIZE)
         newPartyItems = 0
 
-    return Node(newItems, newPartyItems, newAdvances, newActions)
+    return Node(newItems, newPartyItems, newAdvances, newActions, node.pp - 1)
 
 
 def shouldAbandonState(node: Node, bestSeen: dict) -> bool:
@@ -299,20 +302,6 @@ def shouldAbandonState(node: Node, bestSeen: dict) -> bool:
     return node.advances >= seen
 
 
-def shouldConsiderHeal(node: Node):
-    """first return is when to consdier a heal, second return is when heal is
-    forced."""
-    pp_spent = 0
-    pp_compare = INITIAL_PP
-    for i in range(len(node.actions) - 1, -1, -1):
-        if node.actions[i].action == "H":
-            pp_compare = MAX_PP
-            break
-        if node.actions[i].action == "B":
-            pp_spent += 1
-    return pp_spent > pp_compare - 10, pp_spent == pp_compare
-
-
 def usefulAndTotalPickups(pickup, node):
     """Depends on the node because some pickups only matter if you haven't
     got everything you need in that category."""
@@ -333,7 +322,7 @@ def main():
     # know can't be good.
     bestSeen = {}
     pq = []
-    heapq.heappush(pq, Node({}, 0, 0, []))
+    heapq.heappush(pq, Node({}, 0, 0, [], INITIAL_PP))
     # TODO: insert first node
     while len(pq) > 0:
         node = heapq.heappop(pq)
@@ -356,11 +345,10 @@ def main():
             
             heapq.heappush(pq, newNode)
             
-        consider, forced = shouldConsiderHeal(node)
-        if consider:
+        if node.pp < 5:
             # We're almost out of PP, consider healing
             heapq.heappush(pq, nextNodeFromHealAction(node))
-            if forced:
+            if node.pp == 0:
                 # We must heal.  Don't consider anything else for this node.
                 continue
 
