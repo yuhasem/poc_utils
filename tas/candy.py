@@ -258,7 +258,7 @@ def battleFrames(pickupAdvances: int, pidAdvances: int, pid: int):
     movement in overworld to ability to move in overworld).  Returns -1 if the
     pickup cannot be hit given the pidAdvances/pid combination."""
     advancesToPickup = pidAdvances + pid + CRY*2 + LOWEST_RNG_ADVANCES_WITHIN_BATTLE
-    if advancesToPickup < LOWEST_RNG_ADVANCES_PER_BATTLE:
+    if advancesToPickup > LOWEST_RNG_ADVANCES_PER_BATTLE:
         return -1
     pidFrames = 32 + ((pidAdvances - 32)*4 // 5)
     battleFrames = (pickupAdvances - pidAdvances - pid - ANIMATION) // 2
@@ -283,7 +283,7 @@ def nextNodeFromHealAction(node):
                 node.advances + FRAMES_TO_HEAL, newActions, MAX_PP)
 
 
-def nextNodeFromBattleAction(node, steps, pickup, total):
+def nextNodeFromBattleAction(node, steps, pickup, total, pid, pidAdvances):
     newItems = copyItems(node.items)
     for item in pickup:
         newItems[item] = newItems.get(item, 0) + pickup[item]
@@ -293,18 +293,11 @@ def nextNodeFromBattleAction(node, steps, pickup, total):
             LOWEST_RNG_ADVANCES_PER_BATTLE + steps,
             pickup.get('Rare Candy', 0),
             total,
-            0,
-            0))
+            pid,
+            pidAdvances))
     newPartyItems = node.partyItems + total
     newAdvances = node.advances + LOWEST_RNG_ADVANCES_PER_BATTLE + steps + 120
-    # A lower bound (wrong) estimate of how many frames were spent
-    #  search for mon (x1.25) | animation (x1) | battle (x2) | fadeout (x2) | fadeout (x1)
-    # |-----------------------|----------------|-------------|--------------|-------------|
-    #  minimum 40             | around 120     | variable    | 41           | 33
-    #  wrong because need pid | constants in rng.py | wrong because acc/crit/roll check |||
-    monSearchAdvances = 40 * 1.25
-    battleAdvances = (LOWEST_RNG_ADVANCES_PER_BATTLE + steps) - monSearchAdvances - ANIMATION
-    newFrames = node.frames + 40 + ANIMATION + (battleAdvances // 2) + 41 + 33
+    newFrames = node.frames + battleFrames(LOWEST_RNG_ADVANCES_PER_BATTLE + steps, pid, pidAdvances)
     
     if newPartyItems == MAX_PARTY_SIZE:
         menu = menuFrames(MAX_PARTY_SIZE)
@@ -352,12 +345,36 @@ def usefulAndTotalPickups(pickup, node):
     return numUsefulPickups, numTotalPickups
 
 
-def candySearch(node, steps, seed, bestSeen):
-    pickups, advSteps = PickupReturn(seed, MAX_PARTY_SIZE - node.partyItems)
+def pidSearch(node, pickupAdvances):
+    minBattleFrames = 10000  # Will never get this high
+    minPidAndAdvances = (0,0)
+    # 37 is the minimum number of advances to generate the first encounter
+    # 200 is an arbitrary upper bound.
+    seed = rng.advanceRng(INITIAL_SEED, node.advances)
+    for i in range(37, 200):
+        encSeed = rng.advanceRng(seed, i)
+        # default grass density
+        if rng.top(encSeed) % 2880 < 320:
+            pidSeed = rng.advanceRng(encSeed, 1)
+            adv = rng.WildPokemon(pidSeed).advances
+            b = battleFrames(pickupAdvances, i, adv)
+            if b == -1:
+                continue
+            if b < minBattleFrames:
+                minBattleFrames = b
+                minPidAndAdvances = (adv, i)
+    return minPidAndAdvances
+
+
+def candySearch(node, pickupSeed, steps, bestSeen):
+    pickups, advSteps = PickupReturn(pickupSeed, MAX_PARTY_SIZE - node.partyItems)
     useful, total = usefulAndTotalPickups(pickups, node)
     if useful == 0:
         return advSteps, None
-    battleNode = nextNodeFromBattleAction(node, steps, pickups, total)
+    pid, pidAdvances = pidSearch(node, LOWEST_RNG_ADVANCES_PER_BATTLE + steps)
+    if pid == 0:
+        return advSteps, None
+    battleNode = nextNodeFromBattleAction(node, steps, pickups, total, pid, pidAdvances)
     if shouldAbandonState(battleNode, bestSeen):
         return advSteps, None
     return advSteps, battleNode
@@ -368,13 +385,14 @@ def battleNodes(node, bestSeen, pidCache):
     # Start searching for candies after at least 1 battle
     seed = rng.advanceRng(INITIAL_SEED, node.advances + LOWEST_RNG_ADVANCES_PER_BATTLE)
     # Assuming that if we wait this long, we might as well have gotten
-    # another item in between.
-    framesToSearch = 3 * LOWEST_RNG_ADVANCES_PER_BATTLE
+    # another item in between.  Needs to be low because with pid searching this
+    # gets really slow.
+    framesToSearch = LOWEST_RNG_ADVANCES_PER_BATTLE + menuFrames(node.partyItems)
 
     steps = 0
     while steps < framesToSearch:
         thisSeed = rng.advanceRng(seed, steps)
-        advSteps, battleNode = candySearch(node, steps, thisSeed, bestSeen)
+        advSteps, battleNode = candySearch(node, thisSeed, steps, bestSeen)
         if battleNode is not None:
             newNodes.append(battleNode)
         
