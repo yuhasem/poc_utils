@@ -64,6 +64,14 @@ TO_FIND = {
 BIG_NUMBER = 1 << 31
 
 
+# A lower bound (wrong) estimate of how many frames were spent
+#  search for mon (x1.25) | animation (x1) | battle (x2) | fadeout (x2) | fadeout (x1)
+# |-----------------------|----------------|-------------|--------------|-------------|
+#  minimum 40             | around 120     | variable    | 41           | 33
+#  wrong because need pid | constants in rng.py | wrong because acc/crit/roll check |||
+MINIMUM_BATTLE_FRAMES = ((LOWEST_RNG_ADVANCES_PER_BATTLE - 50 - ANIMATION) // 2) + 40 + ANIMATION + 41 + 33
+
+
 def PickupReturn(seed, partySize):
     pickups = {}
     steps = 0
@@ -198,10 +206,6 @@ class Node():
         self.actions = actions
         self.pp = pp
         
-        # Precomputed constant of minimum number of frames to complete a battle
-        self.battleFrames = (LOWEST_RNG_ADVANCES_PER_BATTLE - 50 - ANIMATION) // 2
-        self.battleFrames += 40 + ANIMATION + 41 + 33
-        
     def heuristic(self):
         """Returns an underestimate of the number of frames it will take to
         complete pickups from this node.
@@ -211,12 +215,7 @@ class Node():
         num = 0
         for item in TO_FIND.keys():
             num += max(0, TO_FIND.get(item, 0) - self.items.get(item, 0))
-        # A lower bound (wrong) estimate of how many frames were spent
-        #  search for mon (x1.25) | animation (x1) | battle (x2) | fadeout (x2) | fadeout (x1)
-        # |-----------------------|----------------|-------------|--------------|-------------|
-        #  minimum 40             | around 120     | variable    | 41           | 33
-        #  wrong because need pid | constants in rng.py | wrong because acc/crit/roll check |||
-        return math.ceil(num/3)*(self.battleFrames) + (num//2)*menuFrames(3)
+        return math.ceil(num/3)*(MINIMUM_BATTLE_FRAMES) + (num//2)*menuFrames(3)
     
     def g(self):
         return self.frames
