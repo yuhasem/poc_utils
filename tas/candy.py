@@ -32,6 +32,7 @@ import math
 # model would be needed to take that into account, which I'm not going to build
 # right now.
 LOWEST_RNG_ADVANCES_PER_BATTLE = 1600
+ANIMATION = rng.ROUTE_117_ANIMATION
 
 FRAMES_TO_GET_IN_MENU = 124
 # Assumes 1 character poke name, 1 input to get to the poke, and 10 characters
@@ -172,7 +173,7 @@ class Battle(Action):
 
 class Node():
     
-    def __init__(self, items, partyItems, advances, actions, pp):
+    def __init__(self, items, partyItems, frames, advances, actions, pp):
         """
         Parameters
         ----------
@@ -181,6 +182,8 @@ class Node():
             Ball, PP Up, Nuggest are tracked).
         partyItems : int
             How many party memebers are carrying items
+        frames : int
+            How many frames it took to get to this node.
         advances : int
             How many rng advances happened to get to this node.
         actions: List[Action]
@@ -190,9 +193,14 @@ class Node():
         """
         self.items = items
         self.partyItems = partyItems
+        self.frames = frames
         self.advances = advances
         self.actions = actions
         self.pp = pp
+        
+        # Precomputed constant of minimum number of frames to complete a battle
+        self.battleFrames = (LOWEST_RNG_ADVANCES_PER_BATTLE - 50 - ANIMATION) // 2
+        self.battleFrames += 40 + ANIMATION + 41 + 33
         
     def heuristic(self):
         """Returns an underestimate of the number of frames it will take to
@@ -201,12 +209,17 @@ class Node():
         Technically there are edge cases where it's an overestimate, but those
         are rare enough and would only be found near the end of the chain."""
         num = 0
-        for item in ['Rare Candy', 'Protein', 'Ultra Ball', 'PP Up', 'Nugget']:
+        for item in TO_FIND.keys():
             num += max(0, TO_FIND.get(item, 0) - self.items.get(item, 0))
-        return math.ceil(num/3)*(LOWEST_RNG_ADVANCES_PER_BATTLE+120) + (num//2)*menuFrames(3)
+        # A lower bound (wrong) estimate of how many frames were spent
+        #  search for mon (x1.25) | animation (x1) | battle (x2) | fadeout (x2) | fadeout (x1)
+        # |-----------------------|----------------|-------------|--------------|-------------|
+        #  minimum 40             | around 120     | variable    | 41           | 33
+        #  wrong because need pid | constants in rng.py | wrong because acc/crit/roll check |||
+        return math.ceil(num/3)*(self.battleFrames) + (num//2)*menuFrames(3)
     
     def g(self):
-        return self.advances
+        return self.frames
 
     def f(self):
         return self.g() + self.heuristic()
@@ -241,18 +254,19 @@ def hashableInventory(items, partyItems):
 def nextNodeFromMenuAction(node):
     newItems = copyItems(node.items)
     newActions = copyActions(node.actions)
-    newActions.append(Action('M', menuFrames(node.partyItems)))
-    newAdvances = node.advances + menuFrames(node.partyItems)
+    frames = menuFrames(node.partyItems)
+    newActions.append(Action('M', frames))
     
-    return Node(newItems, 0, newAdvances, newActions, node.pp)
+    return Node(newItems, 0, node.frames + frames, node.advances + frames,
+                newActions, node.pp)
 
 
 def nextNodeFromHealAction(node):
     newActions = copyActions(node.actions)
     newActions.append(Action('H', FRAMES_TO_HEAL))
-    newAdvances = node.advances + FRAMES_TO_HEAL
     
-    return Node(node.items, node.partyItems, newAdvances, newActions, MAX_PP)
+    return Node(node.items, node.partyItems, node.frames + FRAMES_TO_HEAL,
+                node.advances + FRAMES_TO_HEAL, newActions, MAX_PP)
 
 
 def nextNodeFromBattleAction(node, steps, pickup, total):
@@ -269,13 +283,23 @@ def nextNodeFromBattleAction(node, steps, pickup, total):
             0))
     newPartyItems = node.partyItems + total
     newAdvances = node.advances + LOWEST_RNG_ADVANCES_PER_BATTLE + steps + 120
+    # A lower bound (wrong) estimate of how many frames were spent
+    #  search for mon (x1.25) | animation (x1) | battle (x2) | fadeout (x2) | fadeout (x1)
+    # |-----------------------|----------------|-------------|--------------|-------------|
+    #  minimum 40             | around 120     | variable    | 41           | 33
+    #  wrong because need pid | constants in rng.py | wrong because acc/crit/roll check |||
+    monSearchAdvances = 40 * 1.25
+    battleAdvances = (LOWEST_RNG_ADVANCES_PER_BATTLE + steps) - monSearchAdvances - ANIMATION
+    newFrames = node.frames + 40 + ANIMATION + (battleAdvances // 2) + 41 + 33
     
     if newPartyItems == MAX_PARTY_SIZE:
-        newActions.append(Action('M', menuFrames(MAX_PARTY_SIZE)))
-        newAdvances += menuFrames(MAX_PARTY_SIZE)
+        menu = menuFrames(MAX_PARTY_SIZE)
+        newActions.append(Action('M', menu))
+        newAdvances += menu
+        newFrames += menu
         newPartyItems = 0
 
-    return Node(newItems, newPartyItems, newAdvances, newActions, node.pp - 1)
+    return Node(newItems, newPartyItems, newFrames, newAdvances, newActions, node.pp - 1)
 
 
 def shouldAbandonState(node: Node, bestSeen: dict) -> bool:
@@ -298,8 +322,8 @@ def shouldAbandonState(node: Node, bestSeen: dict) -> bool:
     """
     inv = hashableInventory(node.items, node.partyItems)
     seen = bestSeen.get(inv, BIG_NUMBER)
-    bestSeen[inv] = min(node.advances, seen)
-    return node.advances >= seen
+    bestSeen[inv] = min(node.frames, seen)
+    return node.frames >= seen
 
 
 def usefulAndTotalPickups(pickup, node):
@@ -322,7 +346,7 @@ def main():
     # know can't be good.
     bestSeen = {}
     pq = []
-    heapq.heappush(pq, Node({}, 0, 0, [], INITIAL_PP))
+    heapq.heappush(pq, Node({}, 0, 0, 0, [], INITIAL_PP))
     # TODO: insert first node
     while len(pq) > 0:
         node = heapq.heappop(pq)
@@ -334,7 +358,7 @@ def main():
             print("DONE!")
             print(node.items)
             print(node.actions)
-            print("Expected advances: %d" % node.advances)
+            print("Expected frames: %d" % node.frames)
             break
         # If there are any items on the party, consider removing them
         if node.partyItems > 0:

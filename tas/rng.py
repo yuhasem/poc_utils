@@ -147,6 +147,7 @@ class WildPokemon(Pokemon):
 
 
 METEOR_FALLS_ANIMATION = 124
+ROUTE_117_ANIMATION = 95
             
 def heldItem(seed, mon, animation, base_frames):
     """
