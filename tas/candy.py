@@ -34,6 +34,10 @@ import math
 LOWEST_RNG_ADVANCES_PER_BATTLE = 1600
 ANIMATION = rng.ROUTE_117_ANIMATION
 
+# Stuff for PID inside battle length consideration
+LOWEST_RNG_ADVANCES_WITHIN_BATTLE = 1152
+CRY = 135
+
 FRAMES_TO_GET_IN_MENU = 124
 # Assumes 1 character poke name, 1 input to get to the poke, and 10 characters
 # for "RARE CANDY", so it's a bit of an overestimate.
@@ -249,6 +253,17 @@ def hashableInventory(items, partyItems):
         s += item + str(items.get(item, 0))
     return s
 
+def battleFrames(pickupAdvances: int, pidAdvances: int, pid: int):
+    """Returns the number of frames it takes to complete a battle (from first
+    movement in overworld to ability to move in overworld).  Returns -1 if the
+    pickup cannot be hit given the pidAdvances/pid combination."""
+    advancesToPickup = pidAdvances + pid + CRY*2 + LOWEST_RNG_ADVANCES_WITHIN_BATTLE
+    if advancesToPickup < LOWEST_RNG_ADVANCES_PER_BATTLE:
+        return -1
+    pidFrames = 32 + ((pidAdvances - 32)*4 // 5)
+    battleFrames = (pickupAdvances - pidAdvances - pid - ANIMATION) // 2
+    return pidFrames + ANIMATION + battleFrames + 41 + 33
+
 
 def nextNodeFromMenuAction(node):
     newItems = copyItems(node.items)
@@ -337,6 +352,39 @@ def usefulAndTotalPickups(pickup, node):
     return numUsefulPickups, numTotalPickups
 
 
+def candySearch(node, steps, seed, bestSeen):
+    pickups, advSteps = PickupReturn(seed, MAX_PARTY_SIZE - node.partyItems)
+    useful, total = usefulAndTotalPickups(pickups, node)
+    if useful == 0:
+        return advSteps, None
+    battleNode = nextNodeFromBattleAction(node, steps, pickups, total)
+    if shouldAbandonState(battleNode, bestSeen):
+        return advSteps, None
+    return advSteps, battleNode
+
+
+def battleNodes(node, bestSeen, pidCache):
+    newNodes = []
+    # Start searching for candies after at least 1 battle
+    seed = rng.advanceRng(INITIAL_SEED, node.advances + LOWEST_RNG_ADVANCES_PER_BATTLE)
+    # Assuming that if we wait this long, we might as well have gotten
+    # another item in between.
+    framesToSearch = 3 * LOWEST_RNG_ADVANCES_PER_BATTLE
+
+    steps = 0
+    while steps < framesToSearch:
+        thisSeed = rng.advanceRng(seed, steps)
+        advSteps, battleNode = candySearch(node, steps, thisSeed, bestSeen)
+        if battleNode is not None:
+            newNodes.append(battleNode)
+        
+        if advSteps > 0:
+            steps += advSteps
+        else:
+            steps += 1
+    return newNodes
+
+
 def main():
     """This does an A* search to find a good battle/menuing chain to get to
     TO_FIND items. It should reutrn something close to optimal, but to keep
@@ -344,6 +392,7 @@ def main():
     # Best g seen for each inventory state.  Used to not explore nodes that we
     # know can't be good.
     bestSeen = {}
+    pidCache = {}
     pq = []
     heapq.heappush(pq, Node({}, 0, 0, 0, [], INITIAL_PP))
     # TODO: insert first node
@@ -375,33 +424,9 @@ def main():
                 # We must heal.  Don't consider anything else for this node.
                 continue
 
-        # Start searching for candies after at least 1 battle
-        seed = rng.advanceRng(INITIAL_SEED, node.advances + LOWEST_RNG_ADVANCES_PER_BATTLE)
-
-        party = MAX_PARTY_SIZE - node.partyItems
-        # Assuming that if we wait this long, we might as well have gotten
-        # another item in between.
-        framesToSearch = 3 * LOWEST_RNG_ADVANCES_PER_BATTLE
-
-        steps = 0
-        while steps < framesToSearch:
-            thisSeed = rng.advanceRng(seed, steps)
-            pickups, advSteps = PickupReturn(thisSeed, party)
-            oldSteps = steps
-            if advSteps > 0:
-                steps += advSteps
-            else:
-                steps += 1
-
-            useful, total = usefulAndTotalPickups(pickups, node)
-            # We didn't find anything good, so don't bother recording this action.
-            if useful == 0:
-                continue
-
-            battleNode = nextNodeFromBattleAction(node, oldSteps, pickups, total)
-            if shouldAbandonState(battleNode, bestSeen):
-                continue
-            heapq.heappush(pq, battleNode)
+        newNodes = battleNodes(node, bestSeen, pidCache)
+        for n in newNodes:
+            heapq.heappush(pq, n)
 
             
 if __name__ == '__main__':
