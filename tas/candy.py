@@ -257,12 +257,24 @@ def battleFrames(pickupAdvances: int, pidAdvances: int, pid: int):
     """Returns the number of frames it takes to complete a battle (from first
     movement in overworld to ability to move in overworld).  Returns -1 if the
     pickup cannot be hit given the pidAdvances/pid combination."""
-    advancesToPickup = pidAdvances + pid + CRY*2 + LOWEST_RNG_ADVANCES_WITHIN_BATTLE
-    if advancesToPickup > LOWEST_RNG_ADVANCES_PER_BATTLE:
+    # 2 because of the encounter slot + level range rng
+    # 3 because of lag frames during moveset reading (technically variable,
+    #  this is just most accurate on route 117)
+    # 11 because 5 lag frames loading battle screen and 6 rng burned on the
+    #  held item generation frame.
+    advBeforeBattle = pidAdvances + 2 + pid + 3 + ANIMATION + 11
+    # CRY is multiplied by 2 because it plays during the battle
+    # TODO: Rng advances within battle depends on enemy cry?
+    advancesToPickup = advBeforeBattle + CRY*2 + LOWEST_RNG_ADVANCES_WITHIN_BATTLE
+    if advancesToPickup > pickupAdvances:
         return -1
+    # 32 frames at 1 advance per frame to clear the 4 steps where no encounters
+    # are generated.
+    # The remaining steps are assumed to be cleared with 5 advances per 4
+    # frames due to using mach bike at make speed.
     pidFrames = 32 + ((pidAdvances - 32)*4 // 5)
-    battleFrames = (pickupAdvances - pidAdvances - pid - ANIMATION) // 2
-    return pidFrames + ANIMATION + battleFrames + 41 + 33
+    battleFrames = (pickupAdvances - advBeforeBattle) // 2
+    return pidFrames + 2 + ANIMATION + 5 + battleFrames + 41 + 33
 
 
 def nextNodeFromMenuAction(node):
@@ -410,10 +422,10 @@ def main():
     # Best g seen for each inventory state.  Used to not explore nodes that we
     # know can't be good.
     bestSeen = {}
+    # Unused but could potentially be used to speed up looking for wild mon pid
     pidCache = {}
     pq = []
     heapq.heappush(pq, Node({}, 0, 0, 0, [], INITIAL_PP))
-    # TODO: insert first node
     while len(pq) > 0:
         node = heapq.heappop(pq)
         print("Investigating node f = %d, h = %d" % (node.f(), node.heuristic()))
