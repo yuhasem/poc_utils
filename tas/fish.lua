@@ -45,8 +45,6 @@ local multspb={
 local memoryDomain = "System Bus";
 
 local encounterTableAddress = 0x839D29C;
-local cave = true
-local surf = false
  
 
 --a 32-bit, b bit position, 0 is least significant bit
@@ -74,6 +72,7 @@ function gettop(a)
 end
 
 fromBag = false
+rod = 1  -- 0: old, 1: good, 2: super
 
 rngValue = memory.read_u32_le(rngAddress, memoryDomain);
 if fromBag then
@@ -85,11 +84,17 @@ for i=1,framesToFirst,1 do
   rngValue = bnd(mult32(rngValue, 0x41C64E6D) + 0x6073, 0xFFFFFFFF);
 end
 -- TODO: For Super Rod this may not be 1, will read RNG and make adjustments later
-console.writeline("Fish cycles: 1");
+minCycles = 1
+maxCycles = 1
+if rod == 1 then
+  maxCycles = 3
+end
+cycles = (gettop(rngValue) % (maxCycles - minCycles + 1)) + minCycles
+console.writeline(gettop(rngValue))
+console.writeline("Fish cycles: "..cycles.." from max "..maxCycles.." min "..minCycles);
 for i=1,62,1 do
   rngValue = bnd(mult32(rngValue, 0x41C64E6D) + 0x6073, 0xFFFFFFFF);
 end
--- TODO: for super rod 2nd+ cycles, this can be lower (it doesn't do the +4), will need to make adjustments.
 console.writeline(rngValue)
 elipses = math.min(10, (gettop(rngValue) % 10) + 4)
 console.writeline("Elipses: "..elipses);

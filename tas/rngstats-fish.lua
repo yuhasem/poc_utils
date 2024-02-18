@@ -58,8 +58,6 @@ local multspb={
 local memoryDomain = "System Bus";
 
 local encounterTableAddress = 0x839D29C;
-local cave = false
-local surf = false
  
 
 --a 32-bit, b bit position, 0 is least significant bit

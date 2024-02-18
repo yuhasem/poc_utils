@@ -43,6 +43,19 @@ def advanceRng(seed, steps):
             break
     return seed
 
+def index(seed):
+    index = 0
+    indexFind = 0
+    for i in range(31):
+        bit = 1 << i
+        if (seed & bit) != (indexFind & bit):
+            indexFind = (indexFind * multiply[i] + add[i]) & 0xFFFFFFFF
+            index += bit
+    bit = 1 << 31
+    if (seed & bit) != (indexFind & bit):
+      index += bit
+    return index
+
 class Pokemon():
     
     def __repr__(self):
