@@ -84,7 +84,7 @@ def getComparator(seed, injectVblank):
     halfword |= top7
     
     if injectVblank == 7:
-        rng.advanceRng(seed, 1)
+        seed = rng.advanceRng(seed, 1)
     seed = rng.advanceRng(seed, 1)
     # You thought variable number of RNG calls was weird, now we're doing a
     # random number between 0 and a random number.
