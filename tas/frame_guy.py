@@ -17,7 +17,8 @@ SHINY_INDEX = [2964504, 7784076, 9558998, 23543239, 27087307, 46048465, 48382185
 # (387416371 - 387273515) / (22 * 60 + 2) = 108.06.
 # PID = 0xE8AE5D9D @ 8:57:07 is index 387894661
 # (387894661 - 387273515) / 5791 = 107.26
-AVERAGE_ADVANCES_PER_SECOND = 108
+# Adjusted from 108 to 107.5 when there was a measured slip of 5m over 13h.
+AVERAGE_ADVANCES_PER_SECOND = 107.5
 
 
 def FindShinySeeds():
@@ -81,9 +82,6 @@ def time(advances):
 
 
 def ClosestNut(PID):
-    # PID = 0x2671DF8A # 7:20:36, 387273515
-    # PID = 0xFB095894 # 7:42:38, 387416371!
-    # PID = 0xE8AE5D9D # 8:57:07, 387894661
     for index in FindPossibleIndeciesForPID(PID):
         nut = NearestShinyNut(index)
         print("nut", nut, "index", index)
@@ -102,9 +100,9 @@ def Forecast(index, duration=604800):
 
 
 def main():
-    # PID = 0x1D4987B
+    # PID = 0x3AF8E6A9
     # ClosestNut(PID)
-    index = 408633667
+    index = 638846641
     Forecast(index)
 
 
