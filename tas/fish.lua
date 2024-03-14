@@ -71,7 +71,7 @@ function gettop(a)
  return(bit.rshift(a,16))
 end
 
-fromBag = false
+fromBag = true
 rod = 1  -- 0: old, 1: good, 2: super
 
 rngValue = memory.read_u32_le(rngAddress, memoryDomain);
