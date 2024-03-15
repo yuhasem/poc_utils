@@ -51,6 +51,34 @@ def FindShinyIndecies():
     indecies.sort()
     print(indecies)
     
+    
+def FindFirstEncounterForPID(PID, seed):
+    # The sed passed in is the seed of the upper bit, but it's easier to code
+    # the loop if we reverse once so it's the seed of the lower
+    seed = rng.reverseRng(seed, 1)
+    # The game first creates a tentative PID, then generates PIDs until it
+    # matches, so let's get the nature it was matching.
+    nature = PID % 25
+    # And then we can play RNG backward from the seed until we see RNG that
+    # would have generated a tentative PID with the same nature.
+    while (True):
+        seed = rng.reverseRng(seed, 1)
+        upper = rng.top(seed)
+        if ((upper % 25) == nature):
+            # This is the first opportunity the game had to choose this nature.
+            break
+        # So since this wasn't the nature generating call, this was a tentative
+        # PID call so we also have to burn the RNG that set the lower bits for
+        # it.
+        seed = rng.reverseRng(seed, 1)
+    # Note that multiple encounters can generate the same PID at the same seed,
+    # and this just returns the first possible one.  It also doesn't account
+    # for Synchronize.
+    # Return RNG reversed 2 times so that we're returning the seed used for the
+    # Encoutner Slot.  The 1 we back up over is the level determination (always
+    # happens even if the slot has no level range)
+    return rng.reverseRng(seed, 2)
+    
 
 def FindPossibleIndeciesForPID(PID):
     indecies = []
@@ -60,6 +88,7 @@ def FindPossibleIndeciesForPID(PID):
         seed = (lower << 16) + i
         seed = rng.advanceRng(seed, 1)
         if rng.top(seed) == upper:
+            seed = FindFirstEncounterForPID(PID, seed)
             indecies.append(rng.index(seed))
     return indecies
 
@@ -81,10 +110,36 @@ def time(advances):
     return "%dh %dm %fs" % (hours, minutes, seconds)
 
 
+SLOTS = {
+    0: "POOCH 3",
+    20: "WURMP 3",
+    40: "POOCH 4",
+    50: "WURMP 4",
+    60: "LOTAD 3",
+    70: "LOTAD 4",
+    80: "ZIG 3",
+    85: "ZIG 3",
+    90: "ZIG 4",
+    94: "RALTS 4",
+    98: "ZIG 4",
+    99:"NUT 3",
+}
+
+def Slot(rng):
+    s = rng % 100
+    slot = ""
+    for key in SLOTS:
+        if s >= key:
+            slot = SLOTS[key]
+    return slot
+
+
 def ClosestNut(PID):
     for index in FindPossibleIndeciesForPID(PID):
         nut = NearestShinyNut(index)
         print("nut", nut, "index", index)
+        slotRng = rng.advanceRng(0, index)
+        print("slot", Slot(rng.top(slotRng)))
         print(time(nut - index))
 
 
@@ -100,10 +155,10 @@ def Forecast(index, duration=604800):
 
 
 def main():
-    # PID = 0x3AF8E6A9
-    # ClosestNut(PID)
-    index = 638846641
-    Forecast(index)
+    PID = 0x6296E314
+    ClosestNut(PID)
+    # index = 648467497
+    # Forecast(index)
 
 
 if __name__ == '__main__':
