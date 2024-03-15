@@ -156,7 +156,7 @@ class WildPokemon(Pokemon):
     
     def __init__(self, seed, method2: bool = False):
         # The first step is one to check for Synchronize, which we don't track.
-        seed = advanceRng(seed, 2)
+        seed = advanceRng(seed, )
         self.advances = 2
         self.nature = top(seed) % 25
         

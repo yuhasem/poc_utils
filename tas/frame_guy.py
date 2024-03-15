@@ -52,32 +52,41 @@ def FindShinyIndecies():
     print(indecies)
     
     
-def FindFirstEncounterForPID(PID, seed):
-    # The sed passed in is the seed of the upper bit, but it's easier to code
-    # the loop if we reverse once so it's the seed of the lower
+def FindAllEncountersForPID(PID, seed):
+    # The sed passed in is the seed of the upper bits, but it's easier to code
+    # the loop if we reverse once so it's the seed of the lower bits.
     seed = rng.reverseRng(seed, 1)
     # The game first creates a tentative PID, then generates PIDs until it
     # matches, so let's get the nature it was matching.
     nature = PID % 25
     # And then we can play RNG backward from the seed until we see RNG that
     # would have generated a tentative PID with the same nature.
-    while (True):
+    encounters = []
+    tentativePid = nature + 1
+    # If the tentattive PID ever matches the nature, it would have been chosen
+    # instead of proceeding to the PID we know about, so we can end the loop.
+    while ((tentativePid % 25) != nature):
         seed = rng.reverseRng(seed, 1)
         upper = rng.top(seed)
         if ((upper % 25) == nature):
-            # This is the first opportunity the game had to choose this nature.
-            break
+            # This would be a valid place for the encounter to have generated
+            # this PID.  Reversing rng 3 times gets us to the RNG of the
+            # encounter determination, which lets us verify this is a valid
+            # encounter.
+            encRng = rng.reverseRng(seed, 3)
+            # TODO: a way to vary density.
+            if (rng.top(encRng) % 2880 < 320):
+                # Go one forward to get to the encounter slot determintation,
+                # which makes things a bit easier for callers.
+                encounters.append(rng.advanceRng(encRng, 1))
         # So since this wasn't the nature generating call, this was a tentative
         # PID call so we also have to burn the RNG that set the lower bits for
         # it.
         seed = rng.reverseRng(seed, 1)
-    # Note that multiple encounters can generate the same PID at the same seed,
-    # and this just returns the first possible one.  It also doesn't account
-    # for Synchronize.
-    # Return RNG reversed 2 times so that we're returning the seed used for the
-    # Encoutner Slot.  The 1 we back up over is the level determination (always
-    # happens even if the slot has no level range)
-    return rng.reverseRng(seed, 2)
+        lower = rng.top(seed)
+        tentativePid = (upper << 16) + lower
+    # Note that this doesn't account for Synchronize.
+    return encounters
     
 
 def FindPossibleIndeciesForPID(PID):
@@ -88,8 +97,11 @@ def FindPossibleIndeciesForPID(PID):
         seed = (lower << 16) + i
         seed = rng.advanceRng(seed, 1)
         if rng.top(seed) == upper:
-            seed = FindFirstEncounterForPID(PID, seed)
-            indecies.append(rng.index(seed))
+            seeds = FindAllEncountersForPID(PID, seed)
+            # A fallback in case finding encounters fails.
+            if (len(seeds) == 0):
+                print("valid PID with no seeds at index", rng.index(seed))
+            indecies.extend(map(lambda x: rng.index(x), seeds))
     return indecies
 
 
@@ -110,6 +122,7 @@ def time(advances):
     return "%dh %dm %fs" % (hours, minutes, seconds)
 
 
+# TODO: better configurability for this as we move to different routes.
 SLOTS = {
     0: "POOCH 3",
     20: "WURMP 3",
@@ -122,7 +135,7 @@ SLOTS = {
     90: "ZIG 4",
     94: "RALTS 4",
     98: "ZIG 4",
-    99:"NUT 3",
+    99: "NUT 3",
 }
 
 def Slot(rng):
@@ -155,9 +168,9 @@ def Forecast(index, duration=604800):
 
 
 def main():
-    PID = 0x6296E314
+    PID = 0x7C6A6090
     ClosestNut(PID)
-    # index = 648467497
+    # index = 657037755
     # Forecast(index)
 
 
