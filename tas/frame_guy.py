@@ -18,7 +18,13 @@ SHINY_INDEX = [2964504, 7784076, 9558998, 23543239, 27087307, 46048465, 48382185
 # PID = 0xE8AE5D9D @ 8:57:07 is index 387894661
 # (387894661 - 387273515) / 5791 = 107.26
 # Adjusted from 108 to 107.5 when there was a measured slip of 5m over 13h.
-AVERAGE_ADVANCES_PER_SECOND = 107.5
+# At 2024-03-25 4:29:20 AEDT, I predicted a nut frame
+# at 2024-04-02 4:10:40 AEDT. (191h41m20s)
+# Actual 2024-04-02 4:25:51 AEDT
+# 15m51s = 951s
+# 191h41m20s = 690080s
+# 107.5 is off by .14% ~= 0.148
+AVERAGE_ADVANCES_PER_SECOND = 107.4
 
 
 def FindShinySeeds():
@@ -168,9 +174,9 @@ def Forecast(index, duration=604800):
 
 
 def main():
-    PID = 0x7C6A6090
+    PID = 0xDDB1C6B7
     ClosestNut(PID)
-    # index = 657037755
+    # index = 804853949
     # Forecast(index)
 
 
