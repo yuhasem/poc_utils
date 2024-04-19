@@ -160,7 +160,7 @@ while true do
 	     -- black for boring slot
 		 fillColor = 0xFF000000;
 	 elseif slot >= 20 and slot < 40 then
-	     -- black for boring slot
+	     -- pink for boring slot
 	     fillColor = 0xFFFFC0C0;
 	 elseif slot >= 40 and slot < 50 then
 	     -- Varying grays for 10% slots

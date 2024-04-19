@@ -460,7 +460,7 @@ def main():
 
             
 if __name__ == '__main__':
-    main()
+    # main()
     # seed = rng.advanceRng(0xBEF7CFE9, 0)
     # GoodFrames(seed, 4, 900)
-    # TripleCandy(0x56FC8F33, 4, 20000)
+    TripleCandy(0xb5e5b1f6, 4, 20000)

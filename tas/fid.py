@@ -153,7 +153,7 @@ def generateFID(seed):
     
 
 def main():
-    seed = 0xAFCBA65D
+    seed = 0x294A189A
     seed = rng.advanceRng(seed, 2)  # Either 1 or 2
     print("%x " % seed)
     print(generateCandidateFID(seed, 0))
