@@ -1,0 +1,21 @@
+SystemID GBA
+01812C	w	u	0	EWRAM	counter, counting time?
+018140	w	u	0	EWRAM	progress counter, blend ends at 1000
+01813E	w	u	0	EWRAM	progress cap
+0	S	_	1		
+4854	d	h	0	IWRAM	pointer to berry blending stuff
+018054	w	h	0	EWRAM	blending head angle
+018056	w	h	0	EWRAM	roatation speed
+0180A6	b	h	0	EWRAM	
+01814B	b	h	0	EWRAM	
+0	S	_	1		
+002162AB	d	h	0	ROM	top angle byte: lassie, laddie, mister, player
+002162AD	b	h	0	ROM	
+0	S	_	1		
+2A32	w	h	0	IWRAM	Mister result, 0x4523 for Perfect, 0x5432 for Hit, 0x2345 for Miss
+2A34	w	h	0	IWRAM	Laddie result
+2A36	w	h	0	IWRAM	Lassie result
+0	S	_	1		
+01814C	w	u	0	EWRAM	player perfects
+01814E	w	u	0	EWRAM	player hits
+

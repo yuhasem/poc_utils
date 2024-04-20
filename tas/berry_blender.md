@@ -2,6 +2,14 @@
 
 Can we manipulate the NPCs into hitting more perfects by pressing A at incorrect times?  Will this ever save time?
 
+# Conclusion
+
+There is a progress counter at 0x02018140 and a progress "cap" at 0x0201813E.  When the progress counter reaches 1000, the blending is done.  The progress counter will increase by 2 every frame, while it is less than the progress cap.  The progres cap increases whenever you or an NPC gets a hit, even if that hit doesn't increase the RPM.  It is possible to get enough hits yourself to keep the progress cap above the progress counter.
+
+Therefore, manipulating NPC actions doesn't save time.
+
+This can only be invalidated if there is a way to increase the progress counter by more than 2 per frame.
+
 # Notes
 
 I see that there's an RNG call just before the pointer reaches an NPC.  Then when they press, there is 4, 7, or 9 RNG calls on that frame.  The frame with all those RNG calls is usually immediately after the frame with a single RNG call, but sometimes it happens up to 5 frames away (this appears to be when generating an X?).
@@ -96,7 +104,7 @@ With tracelog I found that the call is happening from 0x0804FA66.  I expect that
 0x0804FA4E  ADD r0, r1, r4    ; r0 = 4*r4+r4 = 5*r4
 0x0804FA50  LSL r0, r0, 0x3   ; r0 = 8*5*r4 = 40*r4
   ; r0 is now an offset to some block in IWRAM.  40 (0x28) byte structures it looks like?
-  ; what I see is 2 wrods of data at 40 byte offsets.  The rest is 0s.  I see 16 blocks like this.
+  ; what I see is 2 words of data at 40 byte offsets.  The rest is 0s.  I see 16 blocks like this.
   ; Offset 1 has the words:
   ;  0x4B48: 08 04 FA 15
   ;  0x4B4C: 0b 02 00 01
@@ -140,7 +148,7 @@ With tracelog I found that the call is happening from 0x0804FA66.  I expect that
   ; if (rotation speed > 0x1F3) { goto 0x0804FACC; }
   ; something special to do if the rotation speed is VERY low, I guess.
 0x0804FA8A  CMP r2, 0x42
-0x0804FA8C  BLS 0x0804FABC  ; if (output <= 0x42) { goto 0x0804FABC; }
+0x0804FA8C  BLS 0x0804FABC  ; if (RNG//0x28F <= 0x42) { goto 0x0804FABC; }
   ; if (RNG > 0xA8DE) { do something special? }
 0x0804FA8E  LDR r1, 0x0804FAB4 (=0x03002A20)
 0x0804FA90  LDR r0, 0x0804FAB8 (=0x00004523)
@@ -158,3 +166,157 @@ Before I look at the second half of this function, I would like to see a bit abo
 ```
 0x081E0E38: r0 = IntegerDivision(r0, r1)
 ```
+
+Okay, then moving on.  What's after the data portion of this function?  Repetition.
+
+```
+0x0804FABC  LDR r1, 0x0804FAC4 (=0x03002A20)
+0x0804FABE  LDR r0, 0x0804FAC8 (=0x00005432)
+0x0804FAC0  STRH r0, [r1, 0x14]
+0x0804FAC2  B 0x0804FAF4
+  ; *0x03002A34 = 0x5432, then fuck off down the ROM a bit.
+... data
+0x0804FACC  CMP r2, 0x41
+0x0804FACE  BLS 0x0804FAD6
+  ; if (RNG//0x28F <= 0x41), don't write a thing.
+  ; i.e. if (RNG//0x28F > 0x41) { *0x03002A34 = 0x4523 }
+0x0804FAD0  LDR r1, 0x0804FB00, (=0x03002A20)  ; guh, why is this repeated in the rom so much?
+0x0804FAD2  LDR r0, 0x0804FB04, (=0x00004523)
+0x0804FAD4  STRH r0, [r1, 0x14]
+0x0804FAD6  ADD r0, r2, 0x0
+0x0804FAD8  SUB r0, 0x29
+  ; r0 = RNG//0x28F - 0x29  ; this could be negative.
+... r0 = uint8_t(r0)
+0x0804FADE  CMP r0, 0x18
+0x0804FAE0  BHI 0x0804FAE8  ; HI = unsigned higher,
+  ; if (RNG//0x28F - 0x29 > 0x18  || < 0), don't write a thing,
+0x0804FAE2  LDR r1, 0x0804FB00 (=0x03002A20)
+0x0804FAE4  LDR r0, 0x0804FB08 (=0x00005432)
+0x0804FAE6  STRH r0, [r1, 0x14]
+  ; i.e. if (0 < RNG//0x28F - 0x29 <= 0x18) { *0x03002A34 = 0x5432 }
+0x0804FAE8  CMP r3, 0x9
+0x0804FAEA  BHI 0x0804FAF4
+  ; if (RNG//0x28F > 0x9) { goto 0x0804FAF4 }
+0x0804FAEC  MOV r0, 0x2
+0x0804FAEE  MOV r1, 0x5
+0x0804FAF0  BL 0x0804F8B0  ; function call
+  ; Lots of paths ignore this function call, so check it out later.
+0x0804FAF4  LDR r0, 0x0804FB0C (=0x03004B20)  ; yes, that IS a B, not an A
+0x0804FAF6  ADD r1, r5, r4  ; r5 = 4*arg0, r4 = arg0
+0x0804FAF8  LSL r1, r1, 0x3  ; r1 = 8*5*arg0
+0x0804FAFA  ADD r1, r1, r0
+  ; r1 = 40 byte block in that same group from before.
+0x0804FAFC  MOV r0, 0x1
+  ; r0 = 1 then fuck off down the ROM some more
+0x0804FAFE  B 0x0804FB30
+... data
+0x0804FB10  LDR r0, 0x0804FB1C, (=0x03002A20)
+0x0804FB12  LDR r1, 0x0804FB20, (=0x00004523)
+0x0804FB14  STRH r1, [r0, 0x14]
+  ; *0x03002A34 = 0x4523
+0x0804FB16  MOV r0, 0x1
+0x0804FB18  STRH r0, [r2, 0x8]
+  ; write a 1 at an 8 byte offset in the 40 byte data structure
+0x0804FB1A  B 0x0804FB32
+  ; exit
+... data
+0x0804FB24  LDR r0, 0x0804FB38 (=0x03004B20)
+0x0804FB26  LSL r1, r4, 0x2
+0x0804FB28  ADD r1, r1, r4
+0x0804FB2A  LSL r1, r1, 0x3
+0x0804FB2C  ADD r1, r1, r0
+  ; setup r1 to point to write 40 byte block again.
+0x0804FB2E  MOV r0, 0x0
+  ; default case: write a 0, but some paths skip to the write instruction and over this.
+0x0804FB30  STRH r0, [r1, 0x8]
+  ; write whatever is in r0 to the 8 byte offset in the 40 byte data structure
+0x0804FB32  POP {r4-r6}
+0x0804FB34  POP {r0}
+0x0804FB36  BX r0
+  ; return;
+```
+
+I at least have the right bits of memory to look at to experiment further.  And I now know where blending head and rotation speed is stored in memory, so I can watch those as well.
+
+At angle 0x0800, hits are able to happen for angle 0x2000.  At angle 0x1AB6, perfects happen.
+
+| Angle | RNG | `RNG//0x28F` | IWRAM 0x2A34 | Result | Note |
+| - | - | - | - | - | - |
+| 0x5FE8 | 0xCEBF | 0x50 | 0x4523 | Perfect | |
+| 0x9FC8 | 0xC757 | 0x4D | 0x0000 | Perfect | 0x2A36 has 0x4523 |
+| 0xDE58 | 0xC85B | 0x4E | 0x0000 | Hit | 0x2A32 has 0x5432 |
+| 0x629C | 0x3E41 | 0x18 | 0x0000 | None | |
+| 0x9F5E | 0x56B7 | 0x21 | 0x0000 | None | |
+| 0xDC0E | 0x70A8 | 0x2C | 0x0000 | None | |
+| 0x6158 | 0x6FC9 | 0x2B | 0x5423 | Hit | |
+| 0x9DD4 | 0xFD12 | 0x62 | 0x0000 | Perfect | 0x2A36 has 0x4523 |
+| 0xE188 | 0xB4F1 | 0x46 | 0x0000 | None | |
+| 0x62B8 | 0xD58B | 0x53 | 0x4523 | Perfect |
+| 0xA194 | 0x3AB6 | 0x16 | 0x0000 | Miss | 0x2A36 has 0x2345 frame before the miss |
+
+Okay, so it looks like 0x4523 means Perfect, 0x5432 means Hit, and 0x2345 means Miss.  It also looks like 0x03002A30 is length 4 array of 16 bit referring to the result, each index corresponding to a player.
+
+I'm also guessing that each player has there own thresholds.  These weren't passed into the function I was looking at and I didn't see any way they could vary, so maybe there really is a routine for each player?
+
+Also snooping around 0x02018000 to see if there's anything else worth uncovering around here.  0x02018058 is 2 bytes varying every frame.  0x0201805A locked to 0x229C?  0x18058 also looks like an angle...  It's slightly behind the other one but getting update the same way based on rotation speed.  I don't think I saw this being read for NPC RNG, but it wouldn't surprise me if this was a min/max for player hits/perfect ranges.  0x0201807E is 1 byte counting 0-5 inclusive, advancing 1 per frame.
+
+A bunch of stuff around 0x0201812C varying.  0x018144 chaned to 1 on player hit?  0x01812C counting up 1 per frame.  0x01813C potentionally being re-written to the same value every frame (ditto: 0x018154-0x018160, 0x01817C).  0x018140 counting up 2 per frame.
+
+- 0x018168: 2 bytes.  Horizontal position of blending head? 0xFF00 is max down (-0x100), 0x0100 is max up.
+- 0x01816A: 2 bytes.  Vertical position of blending head?  0xFF00 is max left (-0x100), 0x0100 is max right.
+- 0x01816C: 2 bytes.  Opposite of 0x01816A.
+- 0x01816E: 2 bytes.  Duplicate of 0x018168.
+- 0x018170: 4 bytes.  Seems to be related to rotation?  0 at the top and full right, negative in between, and positive outside that range.  Max is a little over 0x10000 at around Laddie's blend head.
+- 0x018174: 4 bytes.  Seems to be related to rotation?  Min value is negative around player's blend head, max value opposite that.
+
+I was hoping to find the progress meter, but nothing seems to match unless it's one of the counters.  They do stop advancing at the end, value 0x218 and 0x3E8.  0x3E8 = 1000 decimal.  That seems like a good bet for being the progress counter.  Let's investigate that some more.  0x218 = 536, might just be a timer. 
+
+0x018144 Screen shake value?  0x018152 also got set at that time.
+
+0x018130 byte changed to FF when rotation stopped (from 0x14). Then started counting down.  Then it reached 0 and started counting up again?
+
+- 0x01814C/4E/50: Player scores. 2 bytes each.  Perfect/Hit/Miss.
+- 0x018152/54/56: Mister scores. ditto.
+- 0x018158/5A/5C: Laddie scores. ditto.
+- 0x01815E/60/62: Lassie scores. ditto.
+- 0x018164: Ranks. 1 byte each.  Player/Mister/Laddie/Lassie.
+
+## Counter investigation
+
+0x018140 starts at 0.  With no A presses it first advances when Laddie hits a perfect. It advanced by 4.  It advanced by 4 again when Lassie got a regular Hit.  4 Again on Mister hit.
+
+Actually for each of those it advanced by 2 on 2 consecutive frames.  This time Laddie hits a perfect and it increases by 2 on 3 consecutive frames.  Lassie gets regular hit and same result 2 each on 3 frames.  Mister regular hit gets 2 each on 4 frames.  Laddie perfect 2 each on 5 frames.  Lassie perfect: 2 each on 6 frames.  Eventually those chains last long enough that it kind of looks like it's increasing monotonically, but it stops if no one makes an input for a while.
+
+0x01812C always advanced by 1 per frame for the whole thing.
+
+Misses don't increase progress, but they don't decrease it either.  And they do change rotation speed and burn RNG, so could be useful outside of making the slow down at the end come faster.
+
+Player Hit: 2 on 1 frame the first, 2 on 2 frames for the next few after that. Overlappiong the counters with consecutive A presses doesn't affect the result.  
+
+- Hit 5 is where it bumps up to 3 frames.  This is also wehere rotation speed goes above 20 RPM (0x17F at time of hit).
+- Hit 6 is 4 frames (rotation 0x1BF). 
+- Hit 7 is 4 frames (rotation 0x1FF).
+- Hit 8 is 4 frames (rotation 0x23F).
+- Hit 9 is 5 frames (rotation 0x27F, 35.1 RPM).
+- Hit 10 is 5 frames (rot 0x2BE).
+- Hit 11 is 6 frames (rot 0x2FE, 42.07 RPM).
+- Hit 12 (Perfect) is ??.  Laddie hits a perfect so the chain keeps going.  Hard to tell where it stops.
+
+If I wait to make the frist Hit perfect, it get 2 frames instead of 1.  I bet there's something tracking how many frames are left to increase progress for.  Let me see if I can find something that matches observations now that I know what I'm looking for.
+
+0x0201813E looks to be the progress cap.  It increases only when a player or NPC makes a hit, and then progress increases by 2 until it is >= that value.  This makes it a lot easier to see how much it's increasing by per A press.  Misses do not decrease it (but maybe there's a chain mechanic that would limit the progress per Hit?)
+
+Wait a fucking minute.  At the start I can spam 17 inputs in a row and rack up 175 progress cap.  All the other rotations I can get max 3 hits in.  What if I just slow it way the fuck down when it comes my turn and then get 17 inputs in a row again!
+
+- Naïve: 175 leaving my control, 246 coming back into my control. 403 leaving my control (time 78)
+- Insane: 175 leaving my control, 240 coming back into my control.  430 leaving my control (time 97)
+
+So ~5.1 progress per frame the standard way and ~4.4 progress per frame the insane way.  Not immeidately better to just wholy adopt that approach, but it may have some merits in moderation. e.g. if I break by 1 I end up with 425 leaving my control (1 extra hit) at time 79 = ~5.4 progress per frame.
+
+https://www.youtube.com/watch?v=zBEPHIsd3do
+
+## RNG Manipulation
+
+Does this even matter?  As long as progress cap is over progress it doesn't matter what the NPCs are doing and you can get enough cap to last for an entire rotation.
+
+You are limited by the 2 increase to progress each frame.  Unless that can be broken, nothing you do really matters excpet for keeping progress cap above progress. 
