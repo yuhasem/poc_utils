@@ -319,4 +319,235 @@ https://www.youtube.com/watch?v=zBEPHIsd3do
 
 Does this even matter?  As long as progress cap is over progress it doesn't matter what the NPCs are doing and you can get enough cap to last for an entire rotation.
 
-You are limited by the 2 increase to progress each frame.  Unless that can be broken, nothing you do really matters excpet for keeping progress cap above progress. 
+You are limited by the 2 increase to progress each frame.  Unless that can be broken, nothing you do really matters excpet for keeping progress cap above progress.
+
+Okay, but if we can make it above 160 RPM twice in 6 blends, we can skip an entire round of the berry blender.  This is...not trivial, but seems to be possible.  16 cycles = 48 NPC actions + 16 player actions = 64 opportunites for perfect.  64\*1.76 RPM = 112.64 RPM.  Cap before Hit stops increasing: 85.58 RPM.  85.58 RPM + 112.64 RPM = 198.22.  So up to 21 actions can be non-optimal.  3 at the start are reserved for this before the 85.58 cap is actually hit.  So 27 out of 45 NPC actions need to be perfect?  (This is wrong, practice tells me it should be more like 36 our of 45.)  I forgot to include friction slowing things down...
+
+Until I've shown it impossible (by any reasonable means), I will assume that it is possible and try to find the path that accomplishes it.
+
+So what do I make of the Laddie RNG above?
+
+```
+// There this data structure that I don't understand.
+struct fortyByte {
+	int32 unknown1,
+	int32 unknown2,
+	// Not perfectly confident in this.
+	int16 actionThisCycle,
+	int16 unknown3,
+	int32 unknown4,
+	int32 unknown5,
+	int32 unknown6,
+	int32 unknown7,
+	int32 unknown8,
+	int32 unknown9,
+	int32 unknown10,
+}
+fortyByte[16] stuff;
+int16[3] result;
+int16 PERFECT = 0x4523, HIT = 0x5432, MISS = 0x2345;
+
+// index always 1?
+void laddieRng(int16 index) {
+	// First it checks that the blending head is in the right location.
+	int8 adjustedHead = (blendHead + 0x1800) >> 8
+	int8 laddieHead = 0x74
+	if (adjustedHead <= laddieHead) {
+		stuff[index].actionThisCycle = 0;
+		return;
+	}
+	laddieHead += 0x14  // laddieHead = 0x88
+	if (adjustedHead >= laddieHead) {
+		stuff[index].actionThisCycle = 0;
+		return;
+	}
+	if (stuff[index].actionThisCycle != 0) {
+		return;
+	}
+	// This is always 0 for me, so I have no idea what it could be
+	if (*0x0201814B != 0) {
+		result[1] = PERFECT;
+		stuff[index].actionThisCycle = 1;
+		return;
+	}
+	// Note: 655 is about 1/100 of the rand range 65536.  So this is
+	// doing a very inaccurate measure of percentage chance to do a
+	// thing.
+	int16 rand = AdvanceRng() / 655;
+	if (rotationSpeed > 0x1F3) {
+		if (rand > 0x41) {
+			result[1] = PERFECT;
+		}
+		int16 adjustedRand = rand - 0x29;
+		if (adjustedRand >= 0 || adjustedRand <= 0x18) {
+			result[1] = HIT;
+		}
+		if (rand <= 0x9) {
+			0x0804F8B0(0x2, 0x5);  // Miss
+		}
+		stuff[index].actionThisCycle = 1;
+		return;
+	}
+	if (rand <= 0x42) {
+		result[1] = HIT;
+		stuff[index].actionThisCycle = 1;
+		return;
+	}
+	result[1] = PERFECT;
+	stuff[index].actionThisCycle = 1;
+	return;
+}
+```
+
+So interestingly it does different things when the roatation speed is "high."  I completely forgot about this 0x0804F8B0 function.  I wonder what it's doing?  It might be setting up when to fire a miss, based on the fact that I don't see miss getting set anywhere, and that happens several frames after this code runs.
+
+This adjusted rand is also really annoying to reason about.  Well 0x18 + 0x29 = 0x41, so maybe not.
+
+Slow rotation:
+- 66% chance to Hit
+- 34% chance to Perfect
+
+Fast rotation:
+- 35% chance to Perfect
+- 25% chance to Hit
+- 30% chance to None
+- 10% chance to Miss
+
+Let's verify that 0x0804F8B0 is actually a miss kind of thing.
+
+```
+0x804F8B0  PUSH {r4,r5,lr}
+... r5 = uint8_t(r0)
+... r4 = uint8_t(r1)
+0x804F8BE  LDR r0, 0x0804F8E0 (=0x0804F865)  ; this is passing a function as an argument!
+0x804F8C0  MOV r1, 0x50
+0x804F8C2  BL 0x0807AAAC   ; it looks like this picks an index to write to.
+... r0 = uint8_t(r0)
+0x804F8CA  LDR r2, 0x0804F8E4 (=0x03004B20)
+0x804F8CC  LSL r1, r0, 0x02
+0x804F8CE  ADD r1, r1, r0
+0x804F8D0  LSL r1, r1, 0x03
+0x804F8D2  ADD r1, r1, r2
+  ; get the index to a 40 byte block.
+0x804F8D4  STRH r4, [r1, 0xA]
+0x804F8D6  STRH r5, [r1, 0xC]
+  ; then write the args directly in there.
+0x804F8D8  POP {r4,r5}
+0x804F8DA  POP {r0}
+0x804F8DC  BX r0
+```
+
+And experimentally verifying that 0x2, and 0x5 are written to memory in one of these blocks.  It was 0x4B98 in this case (index 3).  Othter things change in this block when it gets set up (is it because my miss was in there?), offset 0: 0xAC75 -> 0xF865, offset 2: 0x0807 -> 0x0804.  0x4BA0 starts counting up 1 per frame.  When it hits 6 the X is displayed.  This same block gets reuse for a Mister miss later in the cycle.  0x4BA4 is 0x1 instead of 0x2, 0x4BA0 does the same counter thing.  0x4B9C (1 byte) seems to be a flag for whether this is active or not.
+
+And by changing inputs, I see that this only gets written before a miss.  So I'm convinced that this is just code to set up the delayed miss.
+
+Okay, so what about the other NPCs?  I'm guessing they have similar functions but with different values.
+
+Mister called around 0x0804F928.  Hmmm.. Not a drop in replacement.
+
+```
+; r0 as an arg, gets placed as a uint8_t into r5.
+; loads blend head angle, but then take a little detour
+0x0804F8F6
+  MOV r1, 0x1
+  BL 0x0804F18C  ; my guess is this is checking the angle is correct.  To be verified later.
+... r0 = uint8_t(r0)
+if (r0 = 0x2) { goto 0x0804F906 (essentially a continue} else {goto 0x0804F9FC}
+0x0804F906
+  ; Lookup in that 40-byte array, using arg0 as index.
+  ; Loads the 8 byte offset (should be actionThisCycle)
+  ; r6 = r1, where r1 was 4*arg0
+if (actionThisCycle = 0) { goto 0x0804F91C (continue) } else { goto 0x0804A0A) }
+0x0804F91C
+  LDR r0, [r4, 0x0]  ; r4 = 0x03004854, it's going to load 0x02018000.
+  ; The load the byte at offset 0x14B.  This is the one I couldn't figure out before
+  ; but was associated with always generating a Perfect.
+if (*0x0201814B != 0) { goto 0x0804F9DE }
+0x0804F924
+  ; uint16_t r0 = AdvanceRng();
+  ; r1 = rand // 0x28F;  ; good
+  ; r3 = r1;
+  LDSH r2, [r0, r4]  ; r2 = rotationSpeed
+if (rotationSpeed > 0x1F3) { goto 0x0804F984 }
+if (r1 <= 0x4B) { goto 0x0804F970 }  ; BLS
+  LDR r1, 0x0804F968 (=0x03002A20)
+  LDR r0, 0x0804F96C (=0x00004523)  ; Perfect!
+  B 0x0804F974
+  ; yeah there's another big data block here.
+0x0804F970
+  LDR r1, 0x0804F97C (=0x03002A20)
+  LDR r0, 0x0804F980 (=0x00005432)  ; Hit!
+0x0804F974
+  STRH r0, [r1, 0x12]  ; this offset agrees with my previous observations
+  LDR r0, 0x0804F980 (=0x00005432)  ; Hit?  I don't see anything branching here directly.
+  B 0x0804F9E2
+... more data
+0x0804F984
+  LDR r0, 0x0804F9A0 (=0x000005DB)  ; ??
+if (rotationSpeed > 0x5DB) { goto 0x0804F9B2 }  ; oh god that's only like 80 RPM
+if (rand // 0x28F > 0x50) { goto 0x0804F9DE }  ; BHI
+  ; r0 = rand // 0x28F - 0x15
+if (adjustedRand < 0 ||  > 0x3B) { goto 0x0804F9AC }  ; BHI
+  ; r1 = the result block
+  ; r0 = HIT
+  B 0x0804F9E2
+... more data
+0x0804F9AC
+if (rand // 0x28F > 0x9) { goto 0x0804F9E4 }  ; BHI
+  B 0x0804F9D4
+0x0804F9B2
+if (rand // 0x28F > 0x5A) { goto 0x0804F9DE }  ; BHI
+  ; r0 = rand // 0x28F - 0x47
+if (adjustedRand < 0 ||  > 0x13) { goto 0x0804F9D0 }  ; BHI
+  ; r1 = the result block
+  ; r0  = hit
+  B 0x0804F9E2
+... yep, more data
+0x0804F9D0
+  CMP r3, 0x1d  ; r3 is rand // 0x28F
+  BHI 0x0804F9E4  ; if (rand // 0x28F > 0x1D) { goto 0x0804F9E4 (mark the action for the cycle then exit) }
+0x0804F9D4
+  MOV r0, 0x1
+  MOV r1, 0x5
+  BL 0x0804F8B0  ; This is the miss conditions
+  B 0x0804F9E4
+0x0804F9DE
+  ; r1 = result block
+  ; r0 = PERFECT
+0x0804F9E2 
+  STRH r0, [r1, 0x12]
+0x0804F9E4
+  ; r0 = 0x03004b20  ; the 40 byte structure
+  ; r1 = 40*argo0 + r0
+  ; r0 = 1
+  B 0x0804FA08
+... even more data
+0x0804F9FC
+  ; r1 = 40*arg0 + 40bytestructureptr
+0x0804FA06
+  ; r0 = 0
+0x0804FA08
+  STRH r0, [r1, 0x8]
+0x0804FA0A
+  POP {r4-r6}
+  POP {r0}
+  BX r0
+```
+
+So three tiers in this one
+
+When Rotation Speed <= 0x1F3
+- 100% to Hit
+- (There should be a 24% chance to Perfect, but I think there's a bug in this code.  Verify via experiment!)
+
+When Rotation Speed > 0x1F3 <= 0x5DB
+- 20% to Perfect
+- 60% to Hit
+- 10% to None
+- 10% to Miss
+
+When Rotation Speed > 0x5DB
+- 10% to Perfect
+- 20% to Hit
+- 60% to None
+- 10% to Miss
