@@ -534,11 +534,11 @@ if (adjustedRand < 0 ||  > 0x13) { goto 0x0804F9D0 }  ; BHI
   BX r0
 ```
 
-So three tiers in this one
+So three tiers in this one.  0x1F3 is ~28 RPM RPM, 0x5DB is ~83 RPM.
 
 When Rotation Speed <= 0x1F3
 - 100% to Hit
-- (There should be a 24% chance to Perfect, but I think there's a bug in this code.  Verify via experiment!)
+- (There should be a 25% chance to Perfect, but I think there's a bug in this code.  Verify via experiment!  Yep 0xDD51 yeilded a hit.)
 
 When Rotation Speed > 0x1F3 <= 0x5DB
 - 20% to Perfect
@@ -551,3 +551,135 @@ When Rotation Speed > 0x5DB
 - 20% to Hit
 - 60% to None
 - 10% to Miss
+
+Alright, 1 more.  What are Lassie's numbers?  RNG called from near 0x0804FB8C.
+
+```
+; arg0 is probably an index again.
+0x0804FB3C
+  PUSH {r4-r6, lr}
+  ; r4 = uint8_t(arg0)
+  ; r3 = ptr to blending mem map
+  ; r0 = blend head angle
+  MOV r1, 0xC0
+  LSR r1, r1, 0x05  ; r1 = 0b0001'1000'0000'0000
+  ADD r0, r0, r1
+  LDR r1, .. (=0x0000FFFF)
+  AND r0, r1
+  ADD r1, r3, 0x0
+  ADD r1, 0xA8
+  LDRB r1, [r1, 0x0]
+  LSR r2, r0, 0x08
+  LDR r0, .. (=0x082162AB)
+  ADD r1, r1, r0
+  LDRB r1, [r1, 0x0]
+  ADD r0, r1, 0x0
+  ADD r0, 0x14
+    ; this all just comparing the blend head angle, just like Laddie.
+    ; Only the byte we load is 0xA0
+  CMP r2, r0
+  BLS 0x0804FC50  ; actionThisCycle = 0 and exit
+  ADD r0, 0x14
+  CMP r2, r0
+  BCS 0x0804FC50  ; actionThisCycle = 0 and exit
+    ; that was all just angle comparison to know if we needed to take an action or not
+  LDR r2, .. (=0x03004B20)
+  ; r0 = 40*argo0;  r2 = r0
+  MOV r6, 0x8
+  LDSH r0, [r2, r6]
+  ADD r6, r1, 0x0  ; r6 = 4*arg0
+  CMP r0, 0x0
+  BNE 0x0804FC5E
+    ; if weve already taken an action, don't do another one
+  LDR r1, .. (=0x0000014B)
+    ; r0 = 0x0201814B  ; the special byte
+    ; if (r0 != 0) { goto: 0x0804FC3C }
+  BL 0x08040EA4  ; r0 = AdvanceRng();
+  ..
+  LDR r1, .. (=0x0000028F)
+  ; r2 = rand // 0x28F
+  LDR r0, [r5, 0x0]  ; r5 should be 0x03004852, a ptr to the ptr to blend mem map
+  ADD r0, 0x56
+  MOV r3, 0x0
+  LDSH r1, [r0, r3]  ; r1 = rotationSpeed
+  LDR r0, .. 0x000001F3
+  CMP r1, r0
+  BGT 0x0804FBF0  ; if rotationSpeed > 0x1F3
+  CMP r2, 0x58
+  BLS 0x0804FBE0
+  ; r0 = PERFECT
+  ; store result
+  B 0x0804FC22
+.. data
+0x0804FBE0
+  ; r0 = HIT
+  ; store result
+  B 0x0804FC22
+0x0804FBF0
+  CMP r2, 0x3c
+  BLS 0x0804FC04  ; if rand <= 0x3C
+  ; r0 = PERFECT
+  B 0x0804FC14
+... data
+0x0804FC04
+  ADD r0, r2, 0x0
+  SUB r0, 0x38  ; r0 = rand - 0x38
+  CMP r0, 0x4
+  BHI 0x0804FC16  ; if adjustedRand < 0 ||  > 0x4
+  ; r0 = hit
+0x0804FC14
+  ; store result
+0x0804FC16
+  CMP r2, 0x4
+  BHI 0x0804FC22
+  ; 0x0804F8B0(0x3, 0x5)  ; store MISS as result
+0x0804FC22
+  ; r1 = ptr to actionThisCycle
+  ; r0 = 1
+  B 0x0804FC5C
+
+0x0804FC3C
+  ; store PERFECT at offeset 0x16 (agrees with observations that this is Lassie)
+  MOV r0, 0x1
+  ; actionThisCycle = 1
+  B 0x0804FC5E
+  
+  
+0x0804FC50
+  ; r0 = ptr to that 40byte array
+  ; r1 = 40*arg0
+  MOV r0, 0x0
+0x0804FC5C
+  STRH r0, [r1, 0x8]
+0x0804FC5E
+  POP {r4-r6}
+  POP {r0}
+  BX r0
+```
+
+So Lassie is 
+
+If rotationSpeed <= 0x1F3
+- 11% to Perfect
+- 89% to Hit
+
+If rotationSpeed > 0x1F3
+- 40% to Perfect
+- 50% to Hit
+- 5% to None
+- 5% to Miss
+
+Fortunately there is consistency in all of them that the lowest RNG values will be Miss, then None, then Hit, then Perfect at the top.  So here's a compilation of all the chances:
+
+|     | <28 RPM |     | >28 RPM, <83 RPM | | |      | >83 RPM |   |     |         |
+| NPC | Hit | Perfect | Miss | None | Hit | Perfect | Miss | None | Hit | Perfect |
+| --- | --- | ------- | ---- | ---- | --- | ------- | ---- | ---- | --- | ------- |
+| Laddie | 66% | 34%  | 10%  | 30%  | 25% | 35%     | same | | | |
+| Lassie | 89% | 11%  | 5%   | 5%   | 50% | 40%     | same | | | |
+| Mister | 100% | 0%  | 10%  | 10%  | 60% | 20%     | 10%  | 60%  | 20% | 10%     |
+
+Beware of off-by-one errors.
+
+## Variable RNG
+
+Why does RNG get burned on displaying the result?  Why is it variable?
