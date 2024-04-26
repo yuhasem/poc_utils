@@ -669,11 +669,12 @@ If rotationSpeed > 0x1F3
 - 5% to None
 - 5% to Miss
 
+### Result Odds
+
 Fortunately there is consistency in all of them that the lowest RNG values will be Miss, then None, then Hit, then Perfect at the top.  So here's a compilation of all the chances:
 
 |     | <28 RPM |     | >28 RPM, <83 RPM | | |      | >83 RPM |   |     |         |
 | NPC | Hit | Perfect | Miss | None | Hit | Perfect | Miss | None | Hit | Perfect |
-| --- | --- | ------- | ---- | ---- | --- | ------- | ---- | ---- | --- | ------- |
 | Laddie | 66% | 34%  | 10%  | 30%  | 25% | 35%     | same | | | |
 | Lassie | 89% | 11%  | 5%   | 5%   | 50% | 40%     | same | | | |
 | Mister | 100% | 0%  | 10%  | 10%  | 60% | 20%     | 10%  | 60%  | 20% | 10%     |
@@ -683,3 +684,80 @@ Beware of off-by-one errors.
 ## Variable RNG
 
 Why does RNG get burned on displaying the result?  Why is it variable?
+
+On a player hit, there are RNG calls from
+- 080005B2
+- 08051594
+- 080515B6
+- 0805160E
+- 08051628
+
+So something around 0x08051594 seems to be an unrolled loop calling all of these?
+
+```
+0x08051594
+  PUSH {r5-r7}
+  BL 0x08040EA4  ; AdvanceRng()
+  ... r1 = uint16_t(r0)
+  MOV r0, 0x1
+  AND r1, r0   ; rand & 0x1 (r1 = 0 when rand is even, 1 when rand is odd)
+  ADD r0, r1, 0x1  ; r0 = r1 + 1.  r0 is ALWAYS >0
+  CMP r0, 0x0
+  BEQ 0x08051648  ; then we check if it equals 0.
+  ; WTF
+  LDR r0, .. (=0x082082EC)
+  MOV r9, r0
+  LDR r2, .. (=0x02020004)
+  MOV r10, r2
+  ADD r6, r1, 0x1
+  MOV r3, 0x1F
+  MOV r8, r3
+  MOV r7, 0x10
+  ; set up a bunch of numbers in registers...why?
+0x080515B8
+  BL 0x08040EA4  ; AdvanceRng()
+  LDR r1, .. (=0x03004854)
+  LDR r4, [r1, 0x0]
+  ADD r4, 0x54  ; r4 = ptr to blending head angle
+  ... r0 = uint16_t(r0)
+  MOV r1, 0x14
+  BL 0x081E0EB0  ; r0 = r0 % r1  (rand % 0x14)
+0x080515CC
+  LDRH r1, [r4, 0x0]  ; r1 = blending head angle
+  ADD r1, r1, r0  ; r1 = blending head angle + rand[0,0x14)
+  LSL r1, r1 0x10 
+  MOV r0, 0xFF
+  LSL r0, r0, 0x10
+  AND r0, r1       ; r0 = 0bXXXX'XXXX'0000'0000 where X is blend head angle + rand
+  LSR r2, r0, 0x10
+  ADD r0, r2, 0x0
+    ; r0 = Just the LEAST significant byte of blend head angle, with a small random adjustment
+  ADD r0, 0x40
+  LSL r0, r0, 0x1  ; r0 = 2*(lower blend head + 0x40)
+  ADD r0, r9       ; r0 += 0x082082EC
+    ; is that...a pointer to ROM?
+  MOV r3, 0x0
+  LDSH r1, [r0, r3]
+    ; and we load from it...!?
+	; okay, what does it look like over there?
+	; 0x082082EC  00 06 00 00
+	;      ...F0  00 12 00 0C
+	;        ...  00 1F 00 19
+	;             00 2B 00 25
+	;             00 38 00 31
+	; it keeps increasing like this but slowing down until it reaches 0x100 at 0x0820836C
+	; then it decreases at the same pace.  It goes negative, mins at 0xFF00 then comes back up
+	; and seems to cycle at least 1 more time.  So this is... a sin() lookup?
+  CMP r1, 0x0
+  BGE 0x080515EC
+0x080515EA
+  ADD r1, 0x3   ; minimum of 3.  Okay now that I know r1 was a sin() I don't know why this minimum is important.
+0x080515EC
+  ASR r1, r1, 0x02  ; Arithmetic Shift Right.  Divide by 4, respecting negatives.
+    ; So max amplitude of 0x100 becomes max amplitude of 0x40
+  LSL r0, r2, 0x01
+  ADD r0, r9
+  MOV r2, 0x0
+  LDSH r0, [r0, r2]
+0x080515F6
+```
