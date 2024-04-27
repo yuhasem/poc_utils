@@ -549,8 +549,8 @@ When Rotation Speed > 0x1F3 <= 0x5DB
 When Rotation Speed > 0x5DB
 - 10% to Perfect
 - 20% to Hit
-- 60% to None
-- 10% to Miss
+- 40% to None
+- 30% to Miss
 
 Alright, 1 more.  What are Lassie's numbers?  RNG called from near 0x0804FB8C.
 
@@ -665,8 +665,8 @@ If rotationSpeed <= 0x1F3
 
 If rotationSpeed > 0x1F3
 - 40% to Perfect
-- 50% to Hit
-- 5% to None
+- 5% to Hit
+- 50% to None
 - 5% to Miss
 
 ### Result Odds
@@ -677,8 +677,8 @@ Fortunately there is consistency in all of them that the lowest RNG values will 
 | --- | ------- | --- | ---------------- |-|-| ---- | ------- | - | --- | ------- |
 | NPC | Hit | Perfect | Miss | None | Hit | Perfect | Miss | None | Hit | Perfect |
 | Laddie | 66% | 34%  | 10%  | 30%  | 25% | 35%     | same | | | |
-| Lassie | 89% | 11%  | 5%   | 5%   | 50% | 40%     | same | | | |
-| Mister | 100% | 0%  | 10%  | 10%  | 60% | 20%     | 10%  | 60%  | 20% | 10%     |
+| Lassie | 89% | 11%  | 5%   | 50%  | 5%  | 40%     | same | | | |
+| Mister | 100% | 0%  | 10%  | 10%  | 60% | 20%     | 30%  | 40%  | 20% | 10%     |
 
 Beware of off-by-one errors.
 
@@ -1099,3 +1099,54 @@ My previous notes call out that 0x02018144 looked like a screen shake value.  Se
 So 0x5DB (1499, 83.5 RPM) is when screen shake can start.  This is also when Mister goes to terrible RNG mode.  This is the one filter I was expecting, so unless this fails in testing I won't dig further.
 
 The shakes are independent.  So if the screen is shaking vertically but not horizontally, there will be 1 RNG call for vertical shake specifically.  And this is also independent of the 3 RNG calls which can repeat.  This fully explains the variance in number of RNG calls.
+
+## Mister action
+
+So when Mister decides to do an action appears to be different than Laddie and Lassie.  For no reason.  But I have to figure this out to simulate.
+
+```
+; when this returns 2?, mister takes action
+0x0804F18C
+  PUSH {lr}
+  LSL r0, r0, 0x10
+  LSL r1, r1, 0x18
+  LSR r0, r0, 0x18
+  ADD r2, r0, 0x0   ; r2 = top byte of blend head
+  ADD r2, 0x18      ; so adjusted head looks exactly the same
+  LDR r0, .. (=0x03004854)  ; ptr to ptr to blend mem map
+  LDR r0, [r0, 0x0]  ; r0 = ptr to blend mem map
+  LSR r1, r1, 0x17  ; r1 = 2*arg1
+  ADD r0, 0xA2
+  ADD r0, r0, r1
+  LDRB r0, [r0, 0x0]   ; this is loading t he offset into the angle word
+  LDR r1, .. (=0x082162AB)
+  ADD r0, r0, r1
+  LDRB r1, [r0, 0x0]  ; and this is loading 0xE0
+  CMP r2, r1
+  BCC 0x0804F1D4   ; CC = Unsigned lower
+    ; Ah, see here's the off-by-one.
+	; if (adjustedHead < misterHead) { exit; }
+	; but the others would be <= here.
+	; because WHY WOULD YOU MAKE THIS EASY TO REASON ABOUT.
+  ADD r0, r1, 0x0
+  ADD r0, 0x30
+  CMP r2, r0
+  BCS 0x0804F1D4   ; CS = Unsigned higher or same
+  SUB r0, 0x1C
+  CMP r2, r0
+  BCC 0x00804F1D0
+  ADD r0, 0x8
+  CMP r2, r0
+  BCS 0x0804F1D0
+  MOV r0, 0x2
+  B 0x0804F1D6
+... Data
+0x0804F1D0
+  MOV r0, 0x1
+  B 0x0804F1D6
+0x0804F1D4
+  MOV r0, 0x0
+0x0804F1D6
+  POP {r1}
+  BX r1
+```
