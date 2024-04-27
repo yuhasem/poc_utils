@@ -19,4 +19,6 @@ SystemID GBA
 01814C	w	u	0	EWRAM	player perfects
 01814E	w	u	0	EWRAM	player hits
 018150	w	u	0	EWRAM	player misses
+0	S	_	1		
+020042	b	u	0	EWRAM	
 

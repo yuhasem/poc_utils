@@ -674,6 +674,7 @@ If rotationSpeed > 0x1F3
 Fortunately there is consistency in all of them that the lowest RNG values will be Miss, then None, then Hit, then Perfect at the top.  So here's a compilation of all the chances:
 
 |     | <28 RPM |     | >28 RPM, <83 RPM | | |      | >83 RPM |   |     |         |
+| --- | ------- | --- | ---------------- |-|-| ---- | ------- | - | --- | ------- |
 | NPC | Hit | Perfect | Miss | None | Hit | Perfect | Miss | None | Hit | Perfect |
 | Laddie | 66% | 34%  | 10%  | 30%  | 25% | 35%     | same | | | |
 | Lassie | 89% | 11%  | 5%   | 5%   | 50% | 40%     | same | | | |
@@ -714,6 +715,7 @@ So something around 0x08051594 seems to be an unrolled loop calling all of these
   MOV r8, r3
   MOV r7, 0x10
   ; set up a bunch of numbers in registers...why?
+  ; they're used MUCH later on.
 0x080515B8
   BL 0x08040EA4  ; AdvanceRng()
   LDR r1, .. (=0x03004854)
@@ -728,12 +730,12 @@ So something around 0x08051594 seems to be an unrolled loop calling all of these
   LSL r1, r1 0x10 
   MOV r0, 0xFF
   LSL r0, r0, 0x10
-  AND r0, r1       ; r0 = 0bXXXX'XXXX'0000'0000 where X is blend head angle + rand
-  LSR r2, r0, 0x10
+  AND r0, r1       ; r0 = 0bXXXX'XXXX'0000'0000'0000'0000 where X is blend head angle + rand
+  LSR r2, r0, 0x10  ; r2 = 0bXXXX'XXXX
   ADD r0, r2, 0x0
     ; r0 = Just the LEAST significant byte of blend head angle, with a small random adjustment
   ADD r0, 0x40
-  LSL r0, r0, 0x1  ; r0 = 2*(lower blend head + 0x40)
+  LSL r0, r0, 0x1  ; r0 = 2*(lower blend head + rand + 0x40)
   ADD r0, r9       ; r0 += 0x082082EC
     ; is that...a pointer to ROM?
   MOV r3, 0x0
@@ -748,16 +750,352 @@ So something around 0x08051594 seems to be an unrolled loop calling all of these
 	; it keeps increasing like this but slowing down until it reaches 0x100 at 0x0820836C
 	; then it decreases at the same pace.  It goes negative, mins at 0xFF00 then comes back up
 	; and seems to cycle at least 1 more time.  So this is... a sin() lookup?
+	; 0x100 = pi
   CMP r1, 0x0
   BGE 0x080515EC
 0x080515EA
-  ADD r1, 0x3   ; minimum of 3.  Okay now that I know r1 was a sin() I don't know why this minimum is important.
+  ADD r1, 0x3   ; minimum of 3.  Okay now that I know r1 was a sin() I don't know why this minimum is important.  Well this means negative values get increased by 3.  I still don't know what that accomplishes.
 0x080515EC
   ASR r1, r1, 0x02  ; Arithmetic Shift Right.  Divide by 4, respecting negatives.
     ; So max amplitude of 0x100 becomes max amplitude of 0x40
+	; And the minimum of 0x3 become 0 anyway?
+	; r1 = (1/4)*sin(2*(lower blend head angle + rand + 0x40))
+	; 2*0x40 = 0x80 = pi/2 makes this a cos() effectively.
   LSL r0, r2, 0x01
-  ADD r0, r9
+    ; r0 = 0b000X'XXXX'XXX0 where X is blend head angle + rand
+  ADD r0, r9  ; r9 is the point to the sin() table
   MOV r2, 0x0
   LDSH r0, [r0, r2]
+    ; r0 = sin(2*(lower blend head angle + rand)
 0x080515F6
+  CMP r0, 0x0
+  BGE 0x080515FC
+  ADD r0, 0x3  ; do the same add 3 for negative numbers here...
+0x080515FC
+  ASR r2, r0, 0x02  ; and also the same /4
+  ADD r1, 0x78  ; r1 ~= (1/4)cos(2*(lower blend head angle + rand)) + 0x78
+  ADD r2, 0x50  ; r2 ~= (1/4)sin(2*(lower blend head angle + rand)) + 0x50
+  LDR r0, .. (=0x082164A4)  ; ptr to something
+  MOV r3, 0x1
+  BL 0x08000BDC  ; A function taking 4 arguments
+  ADD r4, r0, 0x0  ; and returning a single byte.
+  ; r4 = uint8_t(r4)
+0x08051610
+  BL 0x08040EA4  ; AdvanceRng()
 ```
+
+Okay, taking a quick detour to look at 0x082164A4 and 0x08000BDC.  0x082164A4 appears to be a data block (as code it doesn't make sense) but I can't tell of what.  For my own sanity, I'll look at it again when I understand how it's indexed.
+
+```
+0x082164A4
+  b5 d2 5b a0
+  08 21 64 1c
+  08 21 64 88
+  00 00 00 00
+  08 1e 28 b8
+  08 00 12 11
+```
+
+```
+; arg0, a ptr to a data block
+; arg1, a random-ish sinusoid
+; arg2, a random-ish sinusoid
+; arg3, 1
+; Finds a block in memory that has something...manipulates memory, then returns something.
+0x08000BDC
+  PUSH {r4-r7,lr}
+  ADD sp, -0x4  ; oh god stack pointer Manipulation
+  ADD r7, r0, 0x0
+  ; r4 = uint8_t(r3)
+  MOV r3, 0x0
+  LDR r0, .. (=0x02020004)  ; ptr to EWRAM
+  MOV r12, r0
+  LSL r5, r1, 0x10
+  LSL r6, r2, 0x10
+0x08000BF0
+  LSL r0, r3, 0x04  ; we already moved 0 into r3 and stored arg3 into r4....
+  ADD r0, r0, r3    ; so this entire offset block is pointless, it's always index 0.
+  LSL r0, r0, 0x02  ; r0 = 68*r3
+  ADD r0, r12
+  ADD r0, 0x3E  ; why didn't you just load 0x02020042 into r0 originally?
+  LDRB r0, [r0, 0x0]  ; what's in memory at 0x02020042 for me?  1. static.
+  LSL r0, r0, 0x1F  ; single bit
+  CMP r0, 0x0
+0x08000C00
+  BNE 0x08000C1C  ; this will always be the case for us let's only investigate this path.
+0x08000C02  ; the case where whatever we loaded is even.
+  STR r4, [sp, 0x0]  ; store the new r4 on the stack.  Why didn't you just PUSH?
+  ADD r0, r3, 0x0  ; the index
+  ADD r1, r7, 0x0  ; the ptr to a data block (arg0)
+  ASR r2, r5, 0x10 ; the cosinusoidal
+  ASR r3, r6, 010  ; the sinusoidal
+  BL 0x08000CE4  ; set up some args and call this function
+    ; okay this function is way to fucking long and shells out to too many things.
+	; and half of it is random loads and stores and I don't want to keep track of
+	; all those registers and ptrs right now.
+  ; r0 = uint8_t(r0)
+  B 0x08000C28  ; exit
+..
+0x08000C1C
+  ADD r0, r3, 0x1
+  ; r3 = uint8_t(r0)
+  CMP r3, 0x3F
+  BLS 0x08000BF0  ; ah, so we increment the index and try again.  r3 is a loop counter.
+    ; while (ptr[r3] % 2 == 1) {
+	;	r3++
+	;	if (r3 > 0x3F) break;
+	; }
+  MOV r0, 0x40  ; the default case.
+0x08000C28 
+  ADD SP, 0x4
+  POP {r4-r7}
+  POP {r1}
+  BX r1
+```
+
+So what do we do with the return value?  Can I just use the dfeault case to estimate?
+
+```
+; previously r4 was set to a 1 byte value that may be of interest
+; it looks like it's an index to the 0x02020004 array.
+0x08051610
+  BL 0x08040EA4  ; AdvanceRng()
+  LSL r5, r4 0x04
+  ADD r5, r5, r4
+  LSL r5, r5, 0x02  ; r5 = 68*r4
+  MOV r3, r10       ; r10 = 0x02020004
+  ADD r4, r5, r3
+  ; r0 = uint16_t(r0) ; rand
+  MOV r1, r8        ; r8 = 0x1F
+  AND r0, r1  ; just the bottom 9 bits of RNG
+  SUB r0, r7, r0  ; r7 = 0x10.  The result here could be negative.
+  STRH r0, [r4, 0x2E]
+  BL 0x08040EA4
+  ; r0 = uint16_t(r0)
+  MOV r2, r8  ; r8 = 0x1F
+  AND r0, r2  ; just the bottom 9 bits of RNG
+  SUB r0, r7, r0  ; just repeating above, but with new RNG
+  STRH r0, [r4, 0x30]
+    ; 0x10 - 0x1F = -0xF = 0xFFFF'FFF1
+	; 0x10 - 0x0 = 0x10
+    ; so we've created a 4 byte block of RNG, but not perfectly uniform.  bytes 2 and 4 should always be either 00 or FF
+0x0805163A
+  LDR r3, .. (=0x02020020)
+  ADD r5, r5, r3
+  LDR r0, .. (=0x08051545)
+  STR r0, [r5, 0x0]
+  SUB r6, 0x1  ; should be 1 when first RNG was even, 2 when first RNG was odd.
+  CMP r6, 0x0
+  BNE 0x080515B8  ; this should repeat 3 RNG calls.
+  POP {r3-r5}
+  MOV r8, r3
+  MOV r9, r4
+  MOV r10, r5
+  POP {r4-r7}
+  POP {r0}
+  BX r0
+```
+
+What I've learned from this so far is that this is complicated for possibly no reason?  I still haven't figured out what the random sinusoids were for.  The only thing I identified was the loop that would send it back for 3 more RNG calls.  But 4 seems much more likely than 7 (empirically) so even that doesn't fully add up.  What do we do with the RNG written to memory in the 0x02020004 block?  I think it's loaded in 0x08000CE4() but that may take a while to work through.
+
+For right now, maybe I can just confirm that the first rand really is correlated with another trip through RNG.  I can also check if a different routine is used for Perfect/Miss (this was for Hit).
+
+You know, as far as I know, the RNG on these Hit/Miss/Perfect doesn't actually have an effect.  So really I just need to know how *many* of them happen, to predict the RNG that will have an effect.
+
+Hit frames:
+| 2nd RNG call | number burned | NPC? |
+| - | - | - |
+| 35273 | 8 | Mister |
+| 29468 | 5 | |
+| 65511 | 8 | |
+| 34660 | 5 | |
+| 54328 | 5 | |
+| 43496 | 5 | |
+| 3256 | 5 | |
+| 46229 | 8 | |
+| 5664 | 5 | |
+| 62588 | 5 | |
+| 44738 | 5 | |
+| 4338 | 5 | |
+| 16734 | 5 | |
+| 4036 | 5 | |
+| 27909 | 8 | Laddie |
+| 4180 | 5 | Mister |
+
+Alright, rabbit, you've convinced me.  (Also, holy moly I got a lot of even numbers.)
+
+Some of those were Perfect in the middle there, but still didn't break the pattern.  That gives me some hope.  So now I have to 1) verify that this is actually the case for Miss and Perfect, and 2) figure out what those 10 RNG burned frames are all about?
+
+Around miss:
+- 0x08051594
+- 0x080515B6
+- 0x0805160E
+- 0x08051628
+- 0x080515B6
+- 0x0805160E
+- 0x08051628
+
+Those are the exact same addresses that Hit used, so that basically confirms it.
+
+Around perfect:
+- 0x08051594
+- 0x080515B6
+- 0x0805160E
+- 0x08051628
+
+Cool, same thing.  So now I just need to check on one of the 10 burn frames what's going on.
+
+A perfect with 7:
+- 0x080005B2 (VBlank)
+- 0x08051AF6
+- 0x08051AF6
+- 0x08051594
+- 0x080515B6
+- 0x0805160E
+- 0x08051628
+
+Hmmm, so something happening before the other RNG calls.  That's important because it changes whether odd or even.
+
+A perfect with 9:
+- 0x080005B2 (VBlank)
+- 0x08051AF6
+- 0x08051594
+- 0x080515B6
+- 0x0805160E
+- 0x08051628
+- 0x080515B6
+- 0x0805160E
+- 0x08051628
+
+And a perfec with 10:
+- 0x080005B2 (VBlank)
+- 0x08051AF6
+- 0x08051AF6
+- 0x08051594
+- 0x080515B6
+- 0x0805160E
+- 0x08051628
+- 0x080515B6
+- 0x0805160E
+- 0x08051628
+
+So the questions are: Does 0x08051AF6 only happen on perfects?  What determines 0, 1, or 2 procs?
+
+```
+0x08051AE8
+  PUSH {r4-r6,lr}
+  ADD r6, r0, 0x0
+  LSL r4, r1, 0x10
+  LSR r5, r4, 0x10
+  MOV r1, 0x0
+  LDSH r0, [r6, r1]
+    ; from the perfect10
+	; pass1: r6 = 0x02018144, loaded 0x0.
+	; pass2: r6 = 0x02018146, loaded 0x0.
+	; from perfect9
+	; pass1: r6 = 0x02018144, loaded 0x0.
+	; pass2: r6 = 0x02018146, loaded 0xFFFFFFFF.
+	; same r6s for perfect 7.
+  CMP r0, 0x0
+  BNE 0x08051B0C  ; if something was already written to r0, don't do anything.
+0x08051AF6
+  BL 0x08040EA4
+  ; r0 = uint16_t(r0)
+  ADD r1, r5, 0x0
+  BL 0x081E0EB0  ; r0 = rand % arg1
+  LSR r1, r4, 0x11  ; r1 = arg1 / 2
+  SUB r0, r0, r1    ; r0 = rand[-arg1 / 2, arg1 / 2)
+  STRH r0, [r6, 0x0]
+0x08051B0C
+  POP {r4-r6}
+  POP {r0}
+  BX r0
+```
+
+Is 0x08051AE8 always called, or is this in a loop that can be ignored?  I don't always see this code being called, hit and the original perfect log don't have it.  But for all the perfects that did burn extra RNG they had it, and they were both called twice with the same addresses in r0.
+
+I see it called from 0x0804FDEE and 0x0804FE10.  Those are probably part of the same unrolled loop.
+
+My previous notes call out that 0x02018144 looked like a screen shake value.  Seeing a rand range in `[-arg1/2,arg1/2)` made me think of that too.  So that's why it only ever get's called on perfects, because that's the only time it wants to screen shake.  But it doesn't do that on every perfect which also makes sense what I didn't see it in some calls.  So what I really need to know is what are the conditions for that to trigger.  One of them is in this function: If the screen is already shaking, don't shake it anymore.
+
+```
+...
+0x0804FD80
+  STRB r2, [r6, r0]
+  LSL r0, r0, 0x00
+  LDR r7, .. (=0x03004854)  ; ptr to ptr to blend mem map
+  LDR r4, [r7, 0x0]  ; r4 = ptr to blend mem map
+  ADD r5, r4, 0x0
+  ADD r5, 0x56       ; r5 = ptr to rotation speed
+  LDRH r6, [r5, 0x0] ; r6 = rotation speed.
+  MOV r0, 0x0
+  LDSH r1, [r5, r0]  ; r1 = ... also rotation speed...
+  LDR r0, .. (=0x000005DB)  ; r0 set to an immediate, sweet = 1499 decimal.
+    ; if (rotationSpeed > ~83.5 RPM) { screenShake(); }
+  CMP r1, r0
+  BGT 0x0804FDC0     l specifically here: if r1 <= r0, we will skip RNG.
+  LDR r1, .. (=0x08216582)
+  ADD r0, r4, 0x0
+  ADD r0, 0x88
+  LDRB r0, [r0, 0x0]
+  ADD r0, r0, r1
+  LDRB r1, [r0, 0x0]
+  MOV r0, 0xC0
+  LSL r0, r0, 0x1
+  BL 0x081E0810
+  ADD r0, r6, r0
+  STRH r0, [r5, 0x0]
+  B 0x0804FE80       ; exit, so this block can skip over RNG.
+... data
+0x0804FDC0
+  LDR r1, .. (=0x08216582)
+  ADD r0, r4, 0x0
+  ADD r0, 0x88
+  LDRB r0, [r0, 0x0]
+  ADD r0, r0, r1
+  LDRB r1, [r0, 0x0]
+  MOV r0, 0x80
+  BL 0x081E0810
+  ADD r0, r6, r0
+  STRH r0, [r5, 0x0]
+0x0804FDD6
+  MOV r1, 0xA2      ; this and next 2 lines set up r4 to be 0x02018144
+  LSL r1, r1, 0x01
+  ADD r4, r4, r1
+  MOV r1, 0x0
+  LDSH r0, [r5, r1] ; and this probably also an arg
+  MOV r1, 0x64      ; this is probably an arg, set to 0x64 before calling both times.
+  BL 0x081E0810     ; so this determines what the max screen shake value should be?
+  ADD r1, r0, 0x0
+  SUB r1, 0xA       ; then screenShake -= 10
+  LSL r1, r1, 0x10
+  LSR r1, r1, 0x10  ; and cast it to uint16_t
+  ADD r0, r4, 0x0   ; r0 must be 0x02018144 at this point.  r1 is max screen shake value.
+  BL 0x08051AE8     ; this is where hoizontal screen shake is set
+  LDR r0, [r7, 0x0]
+  MOV r1, 0xA3      ; this and next 2 lines set up r4 to be 0x02018146
+  LSL r1, r1, 0x01  ; this is just repeating the above?  but maybe loading something
+  ADD r4, r0, r1    ; different into r0 before the 0x081E0810 call.
+  ADD r0, 0x56
+  MOV r1, 0x0
+  LDSH r0, [r0, r1]
+  MOV r1, 0x64
+  BL 0x081E0810     ; there's nothing this function can do to filter out the RNG call
+  ADD r1, r0, 0x0   ; so not worth investigating more.  Let's look further up!
+  SUB r1, 0xA
+  LSL r1, r1, 0x10
+  LSR r1, r1, 0x10
+  ADD r0, r4, 0x0
+  BL 0x08051AE8    ; this is where vertical screen shake is set
+0x0804FE16
+  B 0x0804FE80
+...
+0x0804FE80
+  POP {r4-r7}
+  POP {r0}
+  BX r0
+```
+
+So 0x5DB (1499, 83.5 RPM) is when screen shake can start.  This is also when Mister goes to terrible RNG mode.  This is the one filter I was expecting, so unless this fails in testing I won't dig further.
+
+The shakes are independent.  So if the screen is shaking vertically but not horizontally, there will be 1 RNG call for vertical shake specifically.  And this is also independent of the 3 RNG calls which can repeat.  This fully explains the variance in number of RNG calls.
