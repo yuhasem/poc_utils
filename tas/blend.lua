@@ -32,11 +32,8 @@
 -- Need a way to order the results of an action.
 
 -- Let's start by generating all possible actions, deduplicating, and
--- displaying the result.
-
--- Decision 1: Emualte or simulate?  Simulating would be a lot more
--- efficient, but it will take longer to get working because I don't
--- understand all of the ways RNG works for actions.
+-- displaying the result.  How do we know the action size?  Where you can
+-- press to still get a hit seems variable based on rotation speed.
 
 ----------------------
 -- CONSTANTS
@@ -74,6 +71,8 @@ local perfectSlowGain=0x60
 local perfectGain=0x20
 
 local friction=0x01
+
+local rotPerRPM = 18.206
 
 local multspa={
  0x41C64E6D, 0xC2A29A69, 0xEE067F11, 0xCFDDDF21,
@@ -160,12 +159,14 @@ function logPerfect(npc)
   -- TODO: for now assuming the shake disappears by the time we get
   -- to the next input.  In reality, we'll need to update shake
   -- accordingly
-  if (shakeHorz == 0) then
-    rng = bit.band(mult32(rng, 0x41C64E6D) + 0x6073, 0xFFFFFFFF)
-  end
-  if (shakeVert == 0) then
-    rng = bit.band(mult32(rng, 0x41C64E6D) + 0x6073, 0xFFFFFFFF)
-  end
+	if (rotSpeed > fastDecision) then
+		if (shakeHorz == 0) then
+			rng = bit.band(mult32(rng, 0x41C64E6D) + 0x6073, 0xFFFFFFFF)
+		end
+		if (shakeVert == 0) then
+			rng = bit.band(mult32(rng, 0x41C64E6D) + 0x6073, 0xFFFFFFFF)
+		end
+	end
   gui.text(10,guiHieght,npc)
   gui.text(100,guiHieght,"Perfect","red")
   guiHieght = guiHieght + 24
@@ -193,7 +194,7 @@ function laddieRng()
 	  logMiss(name)
 	elseif (rand < 40*onePercent) then
 	  logNone(name)
-	elseif (rand < 65*onePercent) then
+	elseif (rand < 66*onePercent) then
 	  logHit(name)
 	else
 	  logPerfect(name)
@@ -274,10 +275,38 @@ function updateRngForAction()
   rng = bit.band(mult32(rng, 0x41C64E6D) + 0x6073, 0xFFFFFFFF)
   -- When odd, burn 3 more
   if (bit.band(rand, 1) == 1) then
+	  -- console.writeline("burning 3 extra rng")
     rng = bit.band(mult32(rng, 0x41C64E6D) + 0x6073, 0xFFFFFFFF)
     rng = bit.band(mult32(rng, 0x41C64E6D) + 0x6073, 0xFFFFFFFF)
     rng = bit.band(mult32(rng, 0x41C64E6D) + 0x6073, 0xFFFFFFFF)
   end
+end
+
+-- Display the maximum RPM acheivable if all results are perfect
+-- until the end of the blend
+function maximum()
+  local counter = memory.read_u16_le(counterAddress, memoryDomain)
+  local speed = memory.read_u16_le(rotSpeedAddress, memoryDomain)
+  local head = memory.read_u16_le(blendHeadAddress, memoryDomain)
+  while (counter < 515) do
+		counter = counter + 1
+		local newHead = head + speed
+		for i=0x2000,0xFFFF,0x4000 do
+			if (head < i and newHead > i) then
+				if (speed < fastDecision) then
+					speed = speed + perfectSlowGain
+				else
+					speed = speed + perfectGain
+				end
+			end
+		end
+		head = bit.band(newHead, 0xFFFF)
+		if (counter % 6 == 0) then
+			speed = speed - friction
+		end
+  end
+  local RPM = speed / rotPerRPM
+  gui.text(200,48,string.format("Maximum final RPM: %.2f", RPM))
 end
 
 
@@ -304,6 +333,10 @@ while true do
   perfect = 0
   hit = 0
   miss = 0
+  
+  if (rotSpeed > 0x0600) then
+    maximum()
+  end
 
   while (rotations < 1) do
     -- VBlank
@@ -323,43 +356,45 @@ while true do
     
     -- update rotation based on hits (must happen before NPC RNG)
     if (miss == 1) then
-  	updateRngForAction()
+  	  updateRngForAction()
       rotSpeed = rotSpeed - missLoss
       miss = 0
     end
     if (hit == 1) then
-  	updateRngForAction()
-      if (rotSpeed <= fastDecision) then
-  	  rotSpeed = rotSpeed + hitGain
-  	end
-  	hit = 0
+			updateRngForAction()
+			if (rotSpeed <= fastDecision) then
+				rotSpeed = rotSpeed + hitGain
+			end
+			hit = 0
     end
     if (perfect == 1) then
-  	updateRngForAction()
-      if (rotSpeed <= fastDecision) then
-  	  rotSpeed = rotSpeed + perfectSlowGain
-  	else
-  	  rotSpeed = rotSpeed + perfectGain
-  	end
-  	perfect = 0
+			updateRngForAction()
+			if (rotSpeed <= fastDecision) then
+				rotSpeed = rotSpeed + perfectSlowGain
+			else
+				rotSpeed = rotSpeed + perfectGain
+			end
+			-- console.writeline(string.format("new rot speed: %x", rotSpeed))
+			perfect = 0
     end
   
     -- check for npc actions
     local adjustedHead = bit.rshift(blendHead, 8) + 0x18
     if (adjustedHead > (laddieHead + 0x14) and adjustedHead < (laddieHead + 0x28)) then
+			-- console.writeline(string.format("%x", blendHead))
       laddieRng()
   	  laddieAction = 1
     else
       laddieAction = 0
     end
     if (adjustedHead > (lassieHead + 0x14) and adjustedHead < (lassieHead + 0x28)) then
-	  -- console.writeline(string.format("%x", blendHead))
+			-- console.writeline(string.format("%x", blendHead))
       lassieRng()
   	  lassieAction = 1
     else
       lassieAction = 0
     end
-	-- >= here is not an error, it's actually different for Mister.
+		-- >= here is not an error, it's actually different for Mister.
     if (adjustedHead >= (misterHead + 0x14) and adjustedHead < (misterHead + 0x28)) then
       misterRng()
   	  misterAction = 1
