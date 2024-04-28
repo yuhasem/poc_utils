@@ -184,21 +184,21 @@ function laddieRng()
   rng = bit.band(mult32(rng, 0x41C64E6D) + 0x6073, 0xFFFFFFFF)
   rand = gettop(rng)
   if (rotSpeed < slowDecision) then
-    if (rand < 66*onePercent) then
-	  logHit(name)
-	else
-	  logPerfect(name)
-	end
+		if (rand < 66*onePercent) then
+			logHit(name)
+		else
+			logPerfect(name)
+		end
   else
-    if (rand < 10*onePercent) then
-	  logMiss(name)
-	elseif (rand < 40*onePercent) then
-	  logNone(name)
-	elseif (rand < 66*onePercent) then
-	  logHit(name)
-	else
-	  logPerfect(name)
-	end
+		if (rand < 10*onePercent) then
+			logMiss(name)
+		elseif (rand < 41*onePercent) then
+			logNone(name)
+		elseif (rand < 66*onePercent) then
+			logHit(name)
+		else
+			logPerfect(name)
+		end
   end
 end
 
@@ -211,21 +211,21 @@ function lassieRng()
   rand = gettop(rng)
   -- console.writeline(string.format("lassie acting on rng: %x", rand))
   if (rotSpeed < slowDecision) then
-    if (rand < 89*onePercent) then
-	  logHit(name)
-	else
-	  logPerfect(name)
-	end
+		if (rand < 89*onePercent) then
+			logHit(name)
+		else
+			logPerfect(name)
+		end
   else
-    if (rand < 5*onePercent) then
-	  logMiss(name)
-	elseif (rand < 55*onePercent) then
-	  logNone(name)
-	elseif (rand < 60*onePercent) then
-	  logHit(name)
-	else
-	  logPerfect(name)
-	end
+		if (rand < 5*onePercent) then
+			logMiss(name)
+		elseif (rand < 56*onePercent) then
+			logNone(name)
+		elseif (rand < 61*onePercent) then
+			logHit(name)
+		else
+			logPerfect(name)
+		end
   end
 end
 
@@ -238,31 +238,31 @@ function misterRng()
   rand = gettop(rng)
   -- console.log(string.format("mister acting on rng: %x", rand))
   if (rotSpeed < slowDecision) then
-    -- Due to a bug, there is no 25% chance to Perfect and the result
-	-- will always be hit.
-    logHit(name)
-  elseif (rotSpeed < fastDecision) then
-    -- console.log("medium speed decision")
-    if (rand < 10*onePercent) then
-	  logMiss(name)
-	elseif (rand < 20*onePercent) then
-	  logNone(name)
-	elseif (rand < 80*onePercent) then
-	  logHit(name)
-	else
-	  logPerfect(name)
-	end
+		-- Due to a bug, there is no 25% chance to Perfect and the result
+		-- will always be hit.
+		logHit(name)
+	elseif (rotSpeed < fastDecision) then
+		-- console.log("medium speed decision")
+		if (rand < 10*onePercent) then
+			logMiss(name)
+		elseif (rand < 20*onePercent) then
+			logNone(name)
+		elseif (rand < 80*onePercent) then
+			logHit(name)
+		else
+			logPerfect(name)
+		end
   else
-    -- console.log("high speed decision")
-    if (rand < 30*onePercent) then
-	  logMiss(name)
-	elseif (rand < 70*onePercent) then
-	  logNone(name)
-	elseif (rand < 90*onePercent) then
-	  logHit(name)
-	else
-	  logPerfect(name)
-	end
+		-- console.log("high speed decision")
+		if (rand < 30*onePercent) then
+			logMiss(name)
+		elseif (rand < 70*onePercent) then
+			logNone(name)
+		elseif (rand < 90*onePercent) then
+			logHit(name)
+		else
+			logPerfect(name)
+		end
   end
 end
 

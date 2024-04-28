@@ -21,4 +21,7 @@ SystemID GBA
 018150	w	u	0	EWRAM	player misses
 0	S	_	1		
 020042	b	u	0	EWRAM	
+0	S	_	1		
+018144	w	s	0	EWRAM	shake horz
+018146	w	s	0	EWRAM	shake vert
 

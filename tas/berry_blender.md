@@ -408,9 +408,9 @@ Slow rotation:
 - 34% chance to Perfect
 
 Fast rotation:
-- 35% chance to Perfect
+- 34% chance to Perfect
 - 25% chance to Hit
-- 30% chance to None
+- 31% chance to None
 - 10% chance to Miss
 
 Let's verify that 0x0804F8B0 is actually a miss kind of thing.
@@ -664,9 +664,9 @@ If rotationSpeed <= 0x1F3
 - 89% to Hit
 
 If rotationSpeed > 0x1F3
-- 40% to Perfect
+- 39% to Perfect
 - 5% to Hit
-- 50% to None
+- 51% to None
 - 5% to Miss
 
 ### Result Odds
@@ -676,8 +676,8 @@ Fortunately there is consistency in all of them that the lowest RNG values will 
 |     | <28 RPM |     | >28 RPM, <83 RPM | | |      | >83 RPM |   |     |         |
 | --- | ------- | --- | ---------------- |-|-| ---- | ------- | - | --- | ------- |
 | NPC | Hit | Perfect | Miss | None | Hit | Perfect | Miss | None | Hit | Perfect |
-| Laddie | 66% | 34%  | 10%  | 30%  | 25% | 35%     | same | | | |
-| Lassie | 89% | 11%  | 5%   | 50%  | 5%  | 40%     | same | | | |
+| Laddie | 66% | 34%  | 10%  | 31%  | 25% | 34%     | same | | | |
+| Lassie | 89% | 11%  | 5%   | 51%  | 5%  | 39%     | same | | | |
 | Mister | 100% | 0%  | 10%  | 10%  | 60% | 20%     | 30%  | 40%  | 20% | 10%     |
 
 Beware of off-by-one errors.
