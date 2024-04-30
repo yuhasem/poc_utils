@@ -266,7 +266,7 @@ function misterRng()
   end
 end
 
-function updateRngForAction()
+function updateRngForAction(rng)
   rng = bit.band(mult32(rng, 0x41C64E6D) + 0x6073, 0xFFFFFFFF)
   local rand = gettop(rng)
   -- Always burn 3.
@@ -280,6 +280,7 @@ function updateRngForAction()
     rng = bit.band(mult32(rng, 0x41C64E6D) + 0x6073, 0xFFFFFFFF)
     rng = bit.band(mult32(rng, 0x41C64E6D) + 0x6073, 0xFFFFFFFF)
   end
+	return rng
 end
 
 -- Display the maximum RPM acheivable if all results are perfect
@@ -308,6 +309,107 @@ function maximum()
   local RPM = speed / rotPerRPM
   gui.text(200,48,string.format("Maximum final RPM: %.2f", RPM))
 end
+
+
+
+function playerAction(angle, speed)
+	if (angle < 0x0800 - speed or angle > 0x3000) then
+	  return 0  -- miss
+	end
+	if (angle < 0x1F00 and angle > 0x1C00 - speed) then
+	  return 2  -- perfect
+	end
+	return 1  -- hit
+end
+
+
+-- Okay, so now I want to think about how to get the program to do create all the
+-- possible permutations of inputs and dervie their results for that action.
+-- Start by thinking about the normal case.  The first rotation is going to be an
+-- exception.
+function permutations()
+  -- read signed, because sometimes the first frame comes while we're <0.
+	-- and then we don't have to track the wrap around.
+  local head = memory.read_s16_le(blendHeadAddress, memoryDomain)
+	local speed = memory.read_u16_le(rotSpeedAddress, memoryDomain)
+	local fricCount = memory.read_u8(frictionCounterAddress, memoryDomain)
+  -- Let's assume that the frame is aligned with the frist non-miss input in a
+	-- cycle.  Let's find how many frames to the last input.
+	local frames = 0
+	local checkHead = head
+	-- this technically counts one more frame than a hit, but it also
+	-- leaves out the frame we're on right now, so it all works out.
+	while (checkHead < 0x3000) do
+	  checkHead = checkHead + speed
+		frames = frames + 1
+	end
+	console.writeline("frames to check"..frames)
+	
+	-- Think of i as a binary string.  For each frame, look at the jth bit.  If it's
+	-- 1 press A, if it's 0 don't press A.  So iterating from [0,2^frames) yields
+  -- all possible permutations of A presses that could affect rng wtihout losing
+	-- speed.
+	for i=0,bit.lshift(1,frames)-1,1 do
+		-- need to keep rng updated spearately for each permutation (and some other state too)
+		local rng = memory.read_u32_le(rngAddress, memoryDomain)
+		local trackHead = head
+		local trackSpeed = speed
+		local trackFric = fricCount
+		local shakeHorz = 0
+		local shakeVert = 0
+		-- For each permutation, update the state until the end of |frames| inputs.
+		for j=0,frames-1,1 do
+			rng = bit.band(mult32(rng, 0x41C64E6D) + 0x6073, 0xFFFFFFFF)  -- VBlank
+			-- console.writeline("vblank for frame "..j)
+			local newHead = trackHead + trackSpeed
+			if bit.check(i,j) then
+				-- Need to check perfect/hit/miss.  Misses can still happen because we only
+				-- checked the last frame when we do nothing, but if we increase speed that
+				-- may be beyond the end.
+				local action = playerAction(trackHead, trackSpeed)
+				if action == 0 then
+					trackSpeed = trackSpeed - missLoss
+				elseif action == 1 then
+				  if trackSpeed <= fastDecision then
+					  trackSpeed = trackSpeed + hitGain
+					end
+				else
+					if trackSpeed <= fastDecision then
+						trackSpeed = trackSpeed + perfectSlowGain
+					else
+						trackSpeed = trackSpeed + perfectGain
+						-- the updated speed is used to calculate screen shake.
+						if shakeHorz == 0 then
+							rng = bit.band(mult32(rng, 0x41C64E6D) + 0x6073, 0xFFFFFFFF)
+							-- console.writeline("rng for horz shake")
+							local rand = gettop(rng)
+							local maxShake = math.floor(trackSpeed / 100) - 10
+							shakeHorz = (rand % maxShake) - bit.rshift(maxShake, 1)
+						end
+						if shakeVert == 0 then
+							rng = bit.band(mult32(rng, 0x41C64E6D) + 0x6073, 0xFFFFFFFF)
+							-- console.writeline("rng for vert shake")
+							local rand = gettop(rng)
+							local maxShake = math.floor(trackSpeed / 100) - 10
+							shakeVert = (rand % maxShake) - bit.rshift(maxShake, 1)
+						end
+					end
+				end
+				rng = updateRngForAction(rng)
+				-- console.writeline("rng for action")
+			end
+		  trackHead = newHead
+			trackFric = trackFric + 1
+			if trackFric == 6 then
+				trackSpeed = trackSpeed - friction
+				trackFric = 0
+			end
+		end
+		console.writeline(string.format("For %x: \n\thead: %x\n\tspeed: %x\n\trng: %x\n", i, trackHead, trackSpeed, rng))
+	end
+end
+
+permutations()
 
 
 while true do
@@ -356,19 +458,19 @@ while true do
     
     -- update rotation based on hits (must happen before NPC RNG)
     if (miss == 1) then
-  	  updateRngForAction()
+  	  rng = updateRngForAction(rng)
       rotSpeed = rotSpeed - missLoss
       miss = 0
     end
     if (hit == 1) then
-			updateRngForAction()
+			rng = updateRngForAction(rng)
 			if (rotSpeed <= fastDecision) then
 				rotSpeed = rotSpeed + hitGain
 			end
 			hit = 0
     end
     if (perfect == 1) then
-			updateRngForAction()
+			rng = updateRngForAction(rng)
 			if (rotSpeed <= fastDecision) then
 				rotSpeed = rotSpeed + perfectSlowGain
 			else
@@ -402,8 +504,7 @@ while true do
       misterAction = 0
     end
   end
-  
+
   emu.frameadvance()
   
 end
-

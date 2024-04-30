@@ -6,6 +6,7 @@ SystemID GBA
 4854	d	h	0	IWRAM	pointer to berry blending stuff
 018054	w	h	0	EWRAM	blending head angle
 018056	w	h	0	EWRAM	roatation speed
+0180A2	w	h	0	EWRAM	
 0180A6	b	h	0	EWRAM	
 01814B	b	h	0	EWRAM	
 0	S	_	1		
@@ -24,4 +25,9 @@ SystemID GBA
 0	S	_	1		
 018144	w	s	0	EWRAM	shake horz
 018146	w	s	0	EWRAM	shake vert
+0	S	_	1		
+4B20	d	h	0	IWRAM	func ptr to mister action?
+2A20	d	h	0	IWRAM	determine hit?
+018188	b	s	0	EWRAM	hit??
+018088	b	h	0	EWRAM	shake??
 

@@ -1050,14 +1050,14 @@ My previous notes call out that 0x02018144 looked like a screen shake value.  Se
 0x0804FDC0
   LDR r1, .. (=0x08216582)
   ADD r0, r4, 0x0
-  ADD r0, 0x88
+  ADD r0, 0x88       ; r0 = 0x02018088,  locked to 0x4?
   LDRB r0, [r0, 0x0]
-  ADD r0, r0, r1
+  ADD r0, r0, r1     ; then use 4 to index into ROM at 0x08216582, this is also 0x4.
   LDRB r1, [r0, 0x0]
   MOV r0, 0x80
-  BL 0x081E0810
-  ADD r0, r6, r0
-  STRH r0, [r5, 0x0]
+  BL 0x081E0810      ; 0x80 // 0x4  (ooh, I wonder if that's for number of players)
+  ADD r0, r6, r0     ; and then it add it to rotation speed
+  STRH r0, [r5, 0x0] ; store it somewhere, it looks like rotation speed?
 0x0804FDD6
   MOV r1, 0xA2      ; this and next 2 lines set up r4 to be 0x02018144
   LSL r1, r1, 0x01
@@ -1066,8 +1066,11 @@ My previous notes call out that 0x02018144 looked like a screen shake value.  Se
   LDSH r0, [r5, r1] ; and this probably also an arg
   MOV r1, 0x64      ; this is probably an arg, set to 0x64 before calling both times.
   BL 0x081E0810     ; so this determines what the max screen shake value should be?
+    ; r0 = rotationSpeed // 100.  Used as maxScreenShake.
   ADD r1, r0, 0x0
   SUB r1, 0xA       ; then screenShake -= 10
+    ; Only shake the screen if roatationSpeed > 1000.  But this is only called
+	; for roatationSpeed > 1500, right?
   LSL r1, r1, 0x10
   LSR r1, r1, 0x10  ; and cast it to uint16_t
   ADD r0, r4, 0x0   ; r0 must be 0x02018144 at this point.  r1 is max screen shake value.
@@ -1149,4 +1152,86 @@ So when Mister decides to do an action appears to be different than Laddie and L
 0x0804F1D6
   POP {r1}
   BX r1
+```
+
+## Player Hits
+
+When is the angle such that the player can get a hit instead of a miss?  It seems to be dependent on rotation speed.
+
+| Earliest | Rotation Speed | | Latest | Rotation Speed |
+| -------- | -------------- |-| ------ | -------------- |
+| 0x0780 | 0x0080 | | 0x2E4B | 0x04BD |
+| 0x049B | 0x05F7 | | 0x2EF6 | 0x0635 |
+| 0x06B0 | 0x0670 | | 0x2D8C | 0x068F |
+| 0x0432 | 0x06E9 | | 0x2DA8 | 0x06E8 |
+| 0x06FF | 0x0723 | | 0x2AEE | 0x0742 |
+| 0x072E | 0x075D | | 0x2C3F | 0x077D |
+
+Prediction: Earliest is `0x0008 - rotationSpeed`.  It may be listed as just 0x08, and blend head is updated before the check.  Latest is `0x3000`.
+
+Relevant code seems to be around 0x0804FFAC? I see the ptr to player hits in r1 and it gets read, incremented, and written back.
+
+```
+0x804FF02
+  CMP r1, r0
+  BEQ 0x0804FF08
+  B 0805005E
+0x0804FF08
+  LDR r0, [r7, 0x0]
+  ADD r0, 0xA2
+  ADD r0, r0, r2
+  LDRH r5, [r0, 0x0]
+  MOV r2, r8
+  LDRH r4, [r2, 0x0]
+  LDR r0, .. (=0x00004523)  ; r0 = PERFECT
+0x0804FF16
+  CMP r4, r0
+  BNE 0x0804FF80  ; if not perfect, do the stuff I was looking at, otherwise do some other stuff
+...
+0x0804FFEA  ; appears to be the last line of code before the data block
+  B 0x0804FFEA
+... data
+0x0804FF80
+  CMP r4, r10
+  BNE 0x0804FFBE
+  MOV r0, r10
+  BL 0x0804FD50
+  LDR r0, [r7, 0x0]
+  MOV r1, 0x9F
+  LSL r1, r1, 0x01
+  ADD r4, r0, r1
+  ADD r0, 0x56
+  MOV r2, 0x0
+  LDSH r0, [r0, r2]  ; r0 = rotation speed
+  MOV r1, 0x46
+0x0804FF9A
+  BL 0x081E0810  ; called with arg0 0x2BE and arg1 0x46 in my case
+    ; return was 0xA in r0.  So this is another integer division function
+  ; r4 = 0x0201813E at this point = ptr to progress cap
+  LDRH r1, [r4, 0x0]
+  ADD r1, r1, r0
+  STRH r1, [r4, 0x0]  ; so this is progress cap getting updated
+    ; appatently it gets updated by (rotationSpeed // 70)
+  LSL r1, r5, 0x18
+  LSR r1, r1, 0x18
+  MOV r0, r10
+0x0804FFAA
+  BL 0x0804FC68  ; Does the particle generating code, maybe other things?
+  LDR r1, [r7, 0x0]
+  MOV r0, 0xA7
+  LSL r0, r0, 0x01
+  ADD r1, r1, r0
+  ADD r1, r9     ; r9 is a pointer to 0x02018000, so now r1 is pointer to player Hits
+  LDRH r0, [r1, 0x0]
+  ADD r0, 0x1
+  B 0x0804FFEA
+  
+  
+0x0804FFEA
+  ; ah, so the ptr and value written back are common code.  So other things
+  ; that branch to this are probablly perfect and miss counters.
+  STRH r0, [r1, 0x0]  ; wrtie the new htis back
+  MOV r0, r8
+  LDRH r1, [r0, 0x0]
+  ...
 ```
