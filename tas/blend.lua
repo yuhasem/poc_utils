@@ -286,6 +286,11 @@ function blend.State:npcAction(index)
 end
 
 -- Player and Mister use this function.
+-- BUG: Script claims mister will MISS.  Actual result: No check.
+--   from 0xC992, 9x8E9 and following frames.
+--   looks like it expects the check at head 0xd27B -> 0xEA adjustedHead.  That's within HIT range but no perfect rang.
+--   the next frame is head 0xdb64 -> 0xF3 adjustedHead.  F4 is minimum for perfect.
+--   and then after that head 0xe44d -> 0xFC which matches top end of perfect and should be correctly ignored.
 function blend.State:specialPlayerCheck(playerHead)
 	local adjustedHead = bit.rshift(self.head, 8) + 0x18
 	if adjustedHead >= (playerHead + 0x14) and adjustedHead < (playerHead + 0x1C) then
@@ -321,14 +326,9 @@ function blend.State:checkAction(npcIndex, npcHead)
 end
 
 function blend.State:advanceNpcActions()
-	-- Note the "-1" after misterHead.  Mister's lower bound check is technically
-	-- >= instaed of >, but to reuse code we can just lower head because these are
-	-- integer checks.  In theory this means there's a bug on Mister's upper bound
-	-- check, but in reality you will never get the speed fast enough to skip over
-	-- the whole range like that.
 	-- TODO: store heads as an array?  Then checkAction behavior is entirely
 	-- determined by just the NPC index.
-	return self:checkAction(LADDIE, laddieHead):checkAction(LASSIE, lassieHead):checkAction(MISTER, misterHead-1)
+	return self:checkAction(LADDIE, laddieHead):checkAction(LASSIE, lassieHead):checkAction(MISTER, misterHead)
 end
 
 -- these functions assume the frame state hasn't been advanced.

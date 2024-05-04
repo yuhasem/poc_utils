@@ -204,6 +204,11 @@ local lastRng = 0
 -- test = test:advance()
 -- console.writeline(rng.index(test.rng))
 
+-- local test = blend.State:current()
+-- test:print()
+-- test = test:advance()
+-- test:print()
+
 while true do
   local guiHieght = 84
 
