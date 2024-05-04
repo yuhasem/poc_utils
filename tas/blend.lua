@@ -285,20 +285,36 @@ function blend.State:npcAction(index)
 	return s
 end
 
+-- Player and Mister use this function.
+function blend.State:specialPlayerCheck(playerHead)
+	local adjustedHead = bit.rshift(self.head, 8) + 0x18
+	if adjustedHead >= (playerHead + 0x14) and adjustedHead < (playerHead + 0x1C) then
+		return PERFECT
+	end
+	if adjustedHead >= playerHead and adjustedHead < (playerHead + 0x30) then
+		return HIT
+	end
+	return MISS
+end
+
 function blend.State:checkAction(npcIndex, npcHead)
 	s = self:copy(self)
-	local adjustedHead = bit.rshift(self.head, 8) + 0x18
-	if (adjustedHead > (npcHead + 0x14) and adjustedHead < (npcHead + 0x28)) then
+	local check = false
+	-- Mister has to be special.  This gives only a 0x0800 range to take action,
+	-- so it's possible Mister doesn't get an action at all on later cycles.
+	if npcIndex == MISTER then
+		check = (s:specialPlayerCheck(npcHead) == PERFECT)
+	else
+		local adjustedHead = bit.rshift(self.head, 8) + 0x18
+		check = (adjustedHead > (npcHead + 0x14) and adjustedHead < (npcHead + 0x28))
+	end
+	if check then
 		-- console.writeline("npc "..npcIndex.."is considering action")
 		if s.actionTaken[npcIndex] ~= 1 then
 			s = s:npcAction(npcIndex)
 			s.actionTaken[npcIndex] = 1
 		end
 	else
-		-- NOTE: for some reason, Mister's action bit clears faster than it
-		-- should (in the game's memory) but he still only takes 1 action.
-		-- It's unclear to me why, but :advance() predicts the right things
-		-- so it's not much of an issue, just a glitch in the display.
 		s.actionTaken[npcIndex] = 0
 	end
 	return s
@@ -315,25 +331,32 @@ function blend.State:advanceNpcActions()
 	return self:checkAction(LADDIE, laddieHead):checkAction(LASSIE, lassieHead):checkAction(MISTER, misterHead-1)
 end
 
+-- these functions assume the frame state hasn't been advanced.
 function blend.State:playerCanHit()
 	local advancedHead = bit.band(self.head + self.speed, 0xFFFF)
-	return (advancedHead >= 0x800 and advancedHead < 0x3000) and (self.head <= 0x3000 or self.head > 0xF000)
+	local adjustedHead = bit.rshift(advancedHead, 8) + 0x18
+	return adjustedHead >= 0x20 and adjustedHead < 0x50
 end
 
+function blend.State:playerCanPerfect()
+	local advancedHead = bit.band(self.head + self.speed, 0xFFFF)
+	local adjustedHead = bit.rshift(advancedHead, 8) + 0x18
+	return adjustedHead >= 0x34 and adjustedHead < 0x3C
+end
+
+-- this function assumes the frame state has been advanced.
 function blend.State:playerAction()
-	local advancedHead = bit.band(s.head + s.speed, 0xFFFF)
-	if (advancedHead < 0x0800 or s.head > 0x3000) then
+	local result = self:specialPlayerCheck(playerHead)
+	if result == MISS then
 	  return self:advanceSpeed(-missLoss, -missLoss):advanceRngForAction()
 	end
-	-- BUG: no perfect at 0x1B9C, 0x9BF
-	-- BUG: no perfect at 0x1AC6, 0x9FA
-	-- Other results:
-	--   perfect at 0x1290, 0xA92
-	--   perfect at 0x14B8, 0xAEE
-	if (advancedHead > 0x1C00 and s.head < 0x1F00) then
+	if result == PERFECT then
 	  return self:advanceSpeed(perfectSlowGain, perfectGain):advanceRngForAction()
 	end
-	return self:advanceSpeed(hitGain, 0):advanceRngForAction()
+	if result == HIT then
+		return self:advanceSpeed(hitGain, 0):advanceRngForAction()
+	end
+	return self:copy(self)
 end
 
 function blend.State:advance(withPlayerAction)

@@ -1109,6 +1109,11 @@ So when Mister decides to do an action appears to be different than Laddie and L
 
 ```
 ; when this returns 2?, mister takes action
+; Also used for player hit/miss/perfect.
+; arg0 = blend head (adjusted?)
+; arg1 = index to player head
+; returns 0 if miss, 1 if hit, 2 if perfect.
+; mister only acts on perfect.
 0x0804F18C
   PUSH {lr}
   LSL r0, r0, 0x10
@@ -1121,11 +1126,12 @@ So when Mister decides to do an action appears to be different than Laddie and L
   LSR r1, r1, 0x17  ; r1 = 2*arg1
   ADD r0, 0xA2
   ADD r0, r0, r1
-  LDRB r0, [r0, 0x0]   ; this is loading t he offset into the angle word
+  LDRB r0, [r0, 0x0]   ; this is loading the offset into the angle word
   LDR r1, .. (=0x082162AB)
   ADD r0, r0, r1
-  LDRB r1, [r0, 0x0]  ; and this is loading 0xE0
+  LDRB r1, [r0, 0x0]  ; and this is loading 0xE0, or 0x20 in case of player
   CMP r2, r1
+    ; r2 = a blend head (adjusted?), r1 = player/npc head (top byte)
   BCC 0x0804F1D4   ; CC = Unsigned lower
     ; Ah, see here's the off-by-one.
 	; if (adjustedHead < misterHead) { exit; }
@@ -1133,16 +1139,22 @@ So when Mister decides to do an action appears to be different than Laddie and L
 	; because WHY WOULD YOU MAKE THIS EASY TO REASON ABOUT.
   ADD r0, r1, 0x0
   ADD r0, 0x30
+    ; r0 = player/npc head + 0x30 (top byte)
   CMP r2, r0
   BCS 0x0804F1D4   ; CS = Unsigned higher or same
+	; if (adjustedHead >= advancedPlayerHead) { return 0; }
   SUB r0, 0x1C
+    ; r0 = player/npc head + 0x14 (top byte)
   CMP r2, r0
-  BCC 0x00804F1D0
+  BCC 0x0804F1D0
+	; if (adjustedHead < perfectPlayerHeadFirst) { return 1; }
   ADD r0, 0x8
+	; r0 = player/npc head + 0x1C (top byte)
   CMP r2, r0
   BCS 0x0804F1D0
+    ; if (adjustedHead > perfectPlayerHeadLast) { return 1; }
   MOV r0, 0x2
-  B 0x0804F1D6
+  B 0x0804F1D6 ; else { return 2; }
 ... Data
 0x0804F1D0
   MOV r0, 0x1
@@ -1167,7 +1179,7 @@ When is the angle such that the player can get a hit instead of a miss?  It seem
 | 0x06FF | 0x0723 | | 0x2AEE | 0x0742 |
 | 0x072E | 0x075D | | 0x2C3F | 0x077D |
 
-Prediction: Earliest is `0x0008 - rotationSpeed`.  It may be listed as just 0x08, and blend head is updated before the check.  Latest is `0x3000`.
+Prediction: Earliest is `0x0800 - rotationSpeed`.  It may be listed as just 0x08, and blend head is updated before the check.  Latest is `0x3000`.
 
 Relevant code seems to be around 0x0804FFAC? I see the ptr to player hits in r1 and it gets read, incremented, and written back.
 
@@ -1175,7 +1187,7 @@ Relevant code seems to be around 0x0804FFAC? I see the ptr to player hits in r1 
 0x804FF02
   CMP r1, r0
   BEQ 0x0804FF08
-  B 0805005E
+  B 0x0805005E
 0x0804FF08
   LDR r0, [r7, 0x0]
   ADD r0, 0xA2
@@ -1235,3 +1247,152 @@ Relevant code seems to be around 0x0804FFAC? I see the ptr to player hits in r1 
   LDRH r1, [r0, 0x0]
   ...
 ```
+
+Desparate search for magic numbers.  0x00000800 is in a register around `081E0EF4`.  But this is one of the modular arithmetic code functions.
+
+0x080515B2 messes with 0x1F, but I don't see it actually do anything with that value.  0x08000E28 does a similar thing.  But this is just using it as a 5 bit mask.
+
+Just digging through the tracelog at this point.  It looks like a result is loaded from 0x03002A30, so something has to write the result there, right?  This is right next to where NPCs results are stored, so looks legit.
+
+Hmmm, but nothing has that address in a register earlier in the frame...  Could be written with a immediate offset (`strh r0, [r1, 0x2]` for example).
+
+I know there's going to be a ton of 0x4523, but I could look at all the places that's stored
+
+Hmmm, 0x0804F18C (the mister angle checking code) is apparently also called from around 0x0805016A.
+
+0x03002918 is a copy of rotation speed?
+
+```
+0x0804FE90
+  PUSH {r4-r7,lr}
+  MOV r7, r10
+  MOV r6, r9
+  MOV r5, r8
+  PUSH {r5-r7}
+  ADD sp, -0x4
+  LDR r0, .. (=0x0202E8CC)
+  LDRH r0, [r0, 0x0]  ; so whatever's loaded from 0x0202E8CC must not be 0.
+    ; locked to 0x0003 for me?
+  CMP r0, 0x0
+  BEQ 0x0804FED6
+	if r0 == 0 then skip over all these checks
+  LDR r3, .. (=0x03002F90)
+  LDRH r0, [r3, 0x4]  ; r0 must be whether the player took an action.
+    ; and so 0x03002F94 must be written somewhere above.  I don't see this changing
+	; in RAM search ever, so it gets written back to 0 at the end of every frame
+	; Not found in entire tracelog...
+  LDR r2, .. (=0x03002A20)
+  CMP r0, 0x0
+  BEQ 0x0804FEB8  ; if player hasn't taken an action, skip over the player check
+  MOV r1, 0x0
+0x0804FEB0
+  STRH r0, [r2, 0x10]  ; r2 = 0x03002A20, so we're writing to 0x03002A30 which is the player action mem.
+    ; so this is exactly what I was looking for!
+  LDR r0, .. (0x00004444)
+  STRH r0, [r2, 0x0]
+  STRH r1, [r3, 0x4]
+0x0804FEB8  ; this appears to be checking NPC actions?  Not going to dive to deep here
+  LDR r0, .. (=0x03002A20)
+  LDR r3, .. (=0x00004444)
+  ADD r1, r2, 0x2
+  ADD r2, r0, 0x0
+  ADD r2, 0x12
+  MOV r6, 0x2
+  LDRH r0, [r2, 0x0]
+  CMP r0, 0x0
+  BEQ 0x0804FECC
+```
+
+```
+0x0805021C
+  PUSH {r4-r6,lr}
+  BL 0x08051494
+  LDR r4, .. (=0x03004854)
+  LDR r0, [r4, 0x0]
+  MOV r1, 0x96
+  LSL r1, r1, 0x01
+  ADD r2, r0, r1
+  LDR r1, [r2, 0x0]
+  LDR r0, .. (=0x00057E03)
+  CMP r1, r0
+  BHI 0x08050238
+  ADD r0, r1, 0x1
+  STR r0, [r2, 0x0]
+  BL 0x080500C8
+  LDR r1, [r4, 0x0]
+  ADD r0, r1, 0x0
+  ADD r0, 0x56
+  LDRH r0, [r0, 0x0]
+  MOV r5, 0x9F
+  LSL r5, r5, 0x01
+  ADD r1, r1, r5
+  LDRH r1, [r1, 0x0]
+  BL 0x08008184  ; updates faux rotation speed (the 2918 one), and writes something to 0x03002964
+0x08050250
+  BL 0x0804FE90  ; set the player result
+```
+
+0x080501A6 Stores into the mem location I'm interested in (again by immediate offset to make it difficult to find).  This is the write immediately precedeing the above code looking at it, I think.
+
+```
+0x0805012E
+  LDR r4, .. (0x03004854)  ; ptr to ptr to blend mem
+  LDR r1, [r4, 0x0]  ; ptr to blend mem
+  LSL r2, r3, 0x01
+  ADD r0, r1, 0x0
+  ADD r0, 0x9A
+  ADD r0, r0, r2
+  ADD r1, 0x5C
+  LDRH r0, [r0, 0x0]
+  ADD r1, r1, r0
+  LDRB r1, [r1, 0x0]
+  LSL r0, r1, 0x04
+  ADD r0, r0, r1
+  ADD r1, r3, 0x4
+  LSL r1, r1, 0x18
+  LSR r1, r1, 0x18
+  BL 0x08001F58  ; stores r1 in some adresses indicated by r0 and r2
+  LDR r0, [r4, 0x0]   ; r0 = ptr to blend mem
+  ADD r0, 0x54        ; r0 = ptr to blend head
+  LDRH r4, [r0, 0x0]  ; r4 = blend head
+  BL 0x08007E5C
+  ADD r1, r0, 0x0  ; the return of the above is used as r1, probably player index
+    ; why a function?  probably for multiplay
+  LSL r1, r1, 0x18
+  LSR r1, r1, 0x18
+  ADD r0, r4, 0x0  ; r0 = blend head
+0x08050168
+  BL 0x0804F18C  ; so this determines player action.  What are the inputs?
+    ; Hey, this is the same as the Mister checking function!  So we've already
+	; at least partially analyzed it!
+	; double check what we're passing in r0 and r1.  r1 I expect to be 0 (player index)
+	; r0 should be the blend head, but is it advanced at all?
+  LSL r0, r0, 0x18
+  LSR r0, r0, 0x18
+  CMP r0, 0x2
+  BNE 0x08050190  ; so if 2 is returned by the function above, we get a perfect.
+    ; I'm surprised to not see rotationSpeed used in the set up for the args.
+0x08050174
+  LDR r1, .. (=0x03002F90)
+  LDR r0, .. (=0x00004523)  ; PERFECT
+  B 0x080501A8  ; this is exactly what I'm looking for!
+... data
+0x08050190
+  CMP r0, 0x1  ; and if 1 is returned by 0x0804F18C, we get a hit.
+  BNE 0x080501A4
+  LDR r1, .. (=0x03002F90)
+  LDR r0, .. (=0x00005432)  ; HIT
+  B 0x080501A8  ; so a lot of paths are probably just jumping straight to the write.
+... data
+0x080501A4
+  LDR r1, .. (=0x03002F90)
+  LDR r0, .. (=0x00002345)  ; MISS
+0x080501A8
+  STRH r0, [r1, 0x4]
+```
+
+In the example frame I had 0x2192 as blend head.  It was translated to 0x21 then 0x39, then compared against 0x20 (BCC 0x39, 0x20), 0x50 (BCS 0x39, 0x50), 0x34 (BCC 0x39, 0x34), 0x3C (BCS 0x39, 0x34)
+
+So adjustedHead = top byte of blend head + 0x18.  Hit is 0x20 <= adjustedHead < 0x50.  Perfect is 0x34 <= adjustedHead < 0x3C.  Really no adjustment for speed?  Does it just do the check after the head is updated for speed on the frame and therefore look like it's done an adjustment?
+
+This also explains why Mister's action flag gets flipped back so quickly, it's actually checking for a perfect range on his head.  And because the range is only 0x0800 big, we might actually be able to skip over his action toward the end of the blend.  Need to account for that for accurate predictions.

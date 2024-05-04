@@ -189,6 +189,14 @@ function displayState(state)
 	gui.text(12,158,string.format("  miss:  %d |  %d |  %d",state.missCounters[1],state.missCounters[2],state.missCounters[3])) 
 end
 
+function displayPlayer(state)
+	if state:playerCanPerfect() then
+		gui.text(12,230,"Player Perfect","yellow")
+	elseif state:playerCanHit() then
+		gui.text(12,230,"Player Hit")
+	end
+end
+
 local lastRng = 0
 
 -- local test = blend.State:current()
@@ -205,6 +213,7 @@ while true do
 	displayRng(r, lastRng)
 	displayState(state)
 	maximum(state)
+	displayPlayer(state)
 	
 	gui.text(350,60,"Player | Action")
 	local lastState = state:copy(state)
