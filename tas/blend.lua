@@ -1,4 +1,4 @@
--- A depth first search to find paths that result in a desired RPM.
+-- Utilities for tracking Berry Blender states.
 dofile("rng.lua")
 
 blend = {}  -- package

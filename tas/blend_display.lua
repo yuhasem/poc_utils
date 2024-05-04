@@ -1,40 +1,21 @@
--- The RNG state space of berry blending is too big and the occurrence of
--- 160 RPM is to rare for me to do this unassissted.  So here's a program
--- to navigate to the best results.
-
--- The premise is this:  There is a limited time we have to influence the
--- RNG while the blend head is close to us without reducing the RPM.
--- Reducing the RPM with a miss is never made back (even with perfect NPC
--- manipulation because of it).  So we consider the events on those frames
--- a single action, and do a graph search through the actions to find the
--- best result.
-
--- The depth of the search is probably only 16.  Maybe a 17th is possible
--- with the fastest results?  The first action has 14 frames, so 2^14
--- actions, although not all of them are distinct.  The state we care about
--- leaving player control is: <RNG index, RPM, blend head angle, time counter>.
--- Most of the time RPM will not change between actions.  RNG index typically
--- looks like a function of the number of A presses, although this isn't
--- always true.  Blend head angle and time counter are more likely to vary
--- based on the inputs to get into the action than the output of the action.
--- Most spins will have 4-6 frames, so an average of around 40 actions.
--- Doing an exhaustive search isn't feasible.  Because the state expansion
--- is much larger at the start of the sequence, A* probably isn't a good
--- fit either.  Most of those first actions will get tried when it's not
--- possible to get stellar RNG on a single cycle later on.  Depth first
--- search seems a good candidate.  It won't find the optimal way to get to
--- 160 RPM, but it will find a way (if it exists) efficiently.
-
--- Consider taking only the top K results from each action (K=[3,5]).
--- It could reduce the branching factor enough for A* to be feasible and
--- may not affect DFS too much while being much more efficient space-wise.
-
--- Need a way to order the results of an action.
-
--- Let's start by generating all possible actions, deduplicating, and
--- displaying the result.  How do we know the action size?  Where you can
--- press to still get a hit seems variable based on rotation speed.
-
+-- Displays on-screen infromation about the current state of the Berry Blender
+-- and helpful information about future states.
+--
+-- Only tracks state that matters for predicting future results.
+-- Progress is a value from 0 to 1000.  When it reaches 1000 the blend is over.
+-- Cap is a value which limits how high Progress can grow.  It increases
+--   whenever there are hits or misses from any player.
+-- Head is the angle of the blend Head
+-- Speed is the current RPM
+-- Counter is a timer.  The fastest blend will end at 515.
+-- Friction is a counter for when to slow the speed down.  Every six, speed 
+--   will go down by 1
+-- Shake is how far the screen is shifted.  This is determined by RNG on
+--   perfect hits when the speed is 1500 or higher (~83 RPM)
+-- Perfect/Hit/Miss are flags set to determine display and speed updates
+-- Action is whether an NPC has taken an action this cycle already
+-- Miss is whether an NPC has missed.  This counts to 5 tehn the display
+--   flag is set.
 dofile("blend.lua")
 
 -- useless, but included for completeness
@@ -43,9 +24,9 @@ local progressCapAddres=0x01813E
 local memoryDomain="EWRAM"
 
 -- constants for maximum calc
-local slowDecision=0x1F3
-local fastDecision=0x5DB
-local oneSixty=2913
+local slowDecision=0x1F3  -- dec 499
+local fastDecision=0x5DB  -- dec 1499
+local oneSixty=0xB61      -- dec 2913
 local rotPerRPM = 18.206
 local perfectSlowGain=0x60
 local perfectGain=0x20
