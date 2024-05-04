@@ -30,4 +30,6 @@ SystemID GBA
 2A20	d	h	0	IWRAM	determine hit?
 018188	b	s	0	EWRAM	hit??
 018088	b	h	0	EWRAM	shake??
+4B9C	b	u	0	IWRAM	miss active?
+4BA0	b	u	0	IWRAM	miss counter?
 
