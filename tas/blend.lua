@@ -150,7 +150,7 @@ function blend.State:shakeRng(dir)
 	s = self:copy(self)
 	s.rng = rng.advance(s.rng, 1)
 	local rand = rng.top(s.rng)
-	-- console.writeline(string.format("rand: %x", rand))
+	-- console.writeline(string.format("rand: %x, speed (dec): %d\n", rand, s.speed))
 	local maxShake = math.floor(s.speed / 100) - 10
 	local res = (rand % maxShake) - bit.rshift(maxShake, 1)
 	-- console.writeline("result: "..res)
@@ -204,14 +204,14 @@ function blend.State:advanceSpeed(slowGain, fastGain)
 end
 
 function blend.State:doPerfect()
-	s = self:copy(self)
+	s = self:advanceSpeed(perfectSlowGain, perfectGain)
 	if s.speed >= fastDecision and s.shakeHorz == 0 then
 		s = s:shakeRng("horz")
 	end
 	if s.speed >= fastDecision and s.shakeVert == 0 then
 		s = s:shakeRng("vert")
 	end
-	return s:advanceSpeed(perfectSlowGain, perfectGain):advanceRngForAction() 
+	return s:advanceRngForAction() 
 end
 
 -- Returns a State with advanced actions determined on previous frames

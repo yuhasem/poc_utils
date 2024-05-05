@@ -74,13 +74,12 @@ function displayShort(perm, state)
 	console.writeline(string.format("For %x: \n\thead: %x\n\tspeed: %x\n\trng: %x\n\tcounter: %d\n", perm, state.head, state.speed, state.rng, state.counter))
 end
 
--- Returns a table of unique player actions and the results they derive.
--- The returned table is of the form {perm={begin=<>, result=<>}, ...}
--- where |begin| is the blend.State after player actions, |perm| is a number that
+-- Returns an array of unique player actions and the results they derive.
+-- The array elements are of the form {perm=<>, begin=<>, result=<>} where
+-- |begin| is the blend.State after player actions, |perm| is a number that
 -- represents how to reconstruct that action and |result| is the blend.State
--- after playing through to the next possible action.  Note that |perm| is a
--- number, but it may be 0, so use `pairs` to iterate through the result, not
--- `ipairs`.
+-- after playing through to the next possible action.  Do not depend on the
+-- index of the array to have meaning.
 function permutations(state)
 	-- First find how many frames we can act on.
 	local lengthState = state
@@ -105,7 +104,7 @@ function permutations(state)
 		end
 		if not contains(results, checkState) then
 			local result = checkState:result()
-			results[i] = {begin=checkState, result=result}
+			results[table.getn(results)+1] = {perm=i, begin=checkState, result=result}
 			-- displayShort(i, result)
 		end 
 	end
@@ -119,21 +118,36 @@ end
 function top(results)
 	local bestResult
 	local bestPerm
-	for perm, states in pairs(results) do
-		local result = states.result
+	for _, r in pairs(results) do
 		if bestResult == nil then
-			bestResult = result
-			bestPerm = perm
+			bestResult = r.result
+			bestPerm = r.perm
 		else
 			-- console.writeline("comparing "..perm.." with "..bestPerm)
-			if compare(result, bestResult) > 0 then
-				bestResult = result
-				bestPerm = perm
+			if compare(r.result, bestResult) > 0 then
+				bestResult = r.result
+				bestPerm = r.perm
 			end
 		end
 	end
 	-- displayShort(bestPerm, bestResult)
 	return {perm=bestPerm, result=bestResult}
+end
+
+function sorter(s1, s2)
+	return compare(s1.result, s2.result) > 0
+end
+
+function topN(results, n)
+	table.sort(results, sorter)
+	local top = {}
+	for i=1,n,1 do
+		if results[i] == nil then
+			break
+		end
+		top[i] = {perm=results[i].perm, result=results[i].result}
+	end
+	return top
 end
 
 function greedy()
@@ -147,6 +161,7 @@ end
 
 -- greedy()
 
+-- STACK FUNCTIONS
 function empty(stack)
 	return stack.top == 0
 end
@@ -166,18 +181,69 @@ function pop(stack)
 	return el
 end
 
-local goal = 0xB61  -- dec 2913, 160 RPM
+function copy(stack)
+	local new = {s={}, top=stack.top}
+	for i=1,stack.top,1 do
+		new.s[i] = stack.s[i]
+	end
+	return new
+end
+-- END STACK FUNCTIONS
+
+local goal = 0x780  -- 0xB61  -- dec 2913, 160 RPM
+
+function displayEnd(path, result)
+	for i=1,table.getn(path),1 do
+		console.writeline(string.format("%x", path[i]))
+	end
+	displayShort(0, result)
+end
+
+function expand(stack)
+	local current = pop(stack)
+	console.writeline(string.format("current state head %x speed %x counter %d", current.result.head, current.result.speed, current.result.counter))
+	if current.result.speed >= goal then
+		displayEnd(current.path.s, current.result)
+		-- console.writeline(current.path.s)
+		return true
+	end
+	if current.result.counter >= 515 then
+		return false
+	end
+	-- TODO: state culling if we know we can't get to the goal from this
+	-- position.
+
+	local nexts = topN(permutations(current.result), 3)
+	-- push next states in reverse order, so that the best results are tried
+	-- first.
+	for i=table.getn(nexts),1,-1 do
+		local newPath = copy(current.path)
+		push(newPath, nexts[i].perm)
+		push(stack, {path=newPath, result=nexts[i].result})
+	end
+	return false
+end
 
 -- Depth first search for a high RPM blend.
 -- TODO: actually do this.
 function search()
 	local stack = {s={}, top=0}
 	local current = blend.State:current()
-	push(stack, current)
+	push(stack, {path={s={}, top=0}, result=current})
 	while not empty(stack) do
-	
+		if expand(stack) then
+			break
+		end
 	end
 end
+
+-- permutations(blend.State:current())
+-- local cur = blend.State:current()
+-- local perf1 = cur:advance():advance():advance(true)
+-- perf1:print()
+-- local perf2 = perf1:advance(true)
+-- perf2:print()
+-- search()
 
 
 -- GREDDY PATH TESTING
@@ -274,3 +340,76 @@ end
 	
 -- 150.12 RPM.  I get to keep my job for now.  And I probably need to teach it to take the speed
 -- at frame 515, not at the result of that cycle.  Okay 
+
+-- DFS TESTING
+-- 28
+-- 5f
+-- 2c   -- PNM ??
+-- b    -- HPN ??
+-- 6    -- HNN ??  Okay something's gone wrong.
+-- b
+-- 7
+-- f
+-- 1
+-- 7
+-- 0
+-- 1d
+-- 1f
+-- 1f
+-- f
+-- For 0: 
+	-- head: cf4c
+	-- speed: b0c
+	-- rng: 99e93f07
+	-- counter: 516
+
+-- current state head 792 speed 5b6 counter 72
+-- current state head 420 speed 650 counter 113
+-- current state head 7c4 speed 6e9 counter 152
+-- current state head 55f speed 763 counter 187  <-- it expects an extra perfect here?
+-- current state head b2 speed 7de counter 220
+-- 28
+-- 5f
+-- 2c  <-- corresponding to this step
+-- b
+-- For 0: 
+	-- head: b2
+	-- speed: 7de
+	-- rng: 17f31272
+	-- counter: 220
+
+-- For 2c: 
+	-- head: 55f   -- actual: 0x3bf
+	-- speed: 763    -- actual: 0x743
+	-- rng: b688dd1f   -- actual: 0x137963CC
+	-- counter: 187    -- correct
+-- This is a double perfect.  Could it have got the wrong shake values?
+-- Yes! But not at all in the way I expected!
+--   AFTER PERFECT 1:
+-- head: 1c7f, speed: 709
+-- rng: f90389b9                <---- RNG is correct, so it did the right number of rolls
+-- counter: 155, friction: 5
+-- shake up 0 left 0            <---- but actual shake values were -3, 0
+-- perfect 0 hit 0 miss 0
+-- "1": "0"
+-- "2": "0"
+-- "3": "0"
+
+-- "1": "0"
+-- "2": "0"
+-- "3": "0"
+
+--   AFTER PERFECT 2:
+-- head: 2388, speed: 728
+-- rng: 45df96b3               <----- And because shake values were wrong above, RNG becomes wrong here
+-- counter: 156, friction: 0
+-- shake up -1 left 0
+-- perfect 0 hit 0 miss 0
+-- "1": "0"
+-- "2": "0"
+-- "3": "0"
+
+-- "1": "0"
+-- "2": "0"
+-- "3": "0"
+
