@@ -377,7 +377,7 @@ end
 -- missing.
 function blend.State:result()
 	s = self:copy(self)
-	while not s:playerCanHit() do
+	while s.counter <= 515 and not s:playerCanHit() do
 		s = s:advance()
 	end
 	return s
