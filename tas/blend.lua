@@ -204,11 +204,16 @@ function blend.State:advanceSpeed(slowGain, fastGain)
 end
 
 function blend.State:doPerfect()
+	-- It seems old speed is used to make the decision whether to shake, but
+	-- updated speed is used to determine how much to shake.  I can't really
+	-- make sense of why that would be the case, and it may be that there's 2
+	-- distinct pieces of code that I've merged in this abstraction.
+	local oldSpeed = self.speed
 	s = self:advanceSpeed(perfectSlowGain, perfectGain)
-	if s.speed >= fastDecision and s.shakeHorz == 0 then
+	if oldSpeed >= fastDecision and s.shakeHorz == 0 then
 		s = s:shakeRng("horz")
 	end
-	if s.speed >= fastDecision and s.shakeVert == 0 then
+	if oldSpeed >= fastDecision and s.shakeVert == 0 then
 		s = s:shakeRng("vert")
 	end
 	return s:advanceRngForAction() 

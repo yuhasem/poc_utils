@@ -26,6 +26,11 @@ function compare(s1, s2)
 		-- console.writeline("s2 wins on miss counter")
 		return -1
 	end
+	if s1.miss < s2.miss then
+		return 1
+	elseif s1.miss > s2.miss then
+		return -1
+	end
 	return 0
 end
 
@@ -52,6 +57,11 @@ function equals(s1, s2)
 	end
 	-- Specifically care about Mister missing for where we will be comparing.
 	if s1.missCounters[1] ~= s2.missCounters[1] then
+		return false
+	end
+	-- Mister miss can registered just as the player hits around the 3rd cycle,
+	-- so it actually ends up being important to check this.
+	if s1.miss ~= s2.miss then
 		return false
 	end
 	-- All paths get the same amount of friction by the end, so don't care when
@@ -84,9 +94,24 @@ function permutations(state)
 	-- First find how many frames we can act on.
 	local lengthState = state
 	local frames = 0
-	while (lengthState:playerCanHit()) do
-		frames = frames + 1
-		lengthState = lengthState:advance()
+	local fromMinimum = lengthState.speed == 0x80
+	-- When we're at minimum speed, we wnat to use misses to influence RNG.  So
+	-- track how many frames it takes to get to the point where we can increase
+	-- speed.
+	if fromMinimum then
+		-- technically could avoid the code duplication with XOR?  But I think this
+		-- is more understandable.
+		while not lengthState:playerCanHit() do
+			frames = frames + 1
+			lengthState = lengthState:advance()
+		end
+	-- Otherwise (the normal case) we don't want any misses, so we just use the
+	-- frames where we can hit to influence RNG.
+	else
+		while (lengthState:playerCanHit()) do
+			frames = frames + 1
+			lengthState = lengthState:advance()
+		end
 	end
 	
 	-- then produce the state and result for all possible actions across those
@@ -101,6 +126,13 @@ function permutations(state)
 		for j=1,frames,1 do
 			-- do a player action when the jth bit of i is set.
 			checkState = checkState:advance(bit.check(i,j-1))
+		end
+		-- If we were at minimum, use all hittable frames to increase speed as much
+		-- as possible
+		if fromMinimum then
+			while checkState:playerCanHit() do
+				checkState = checkState:advance(true)
+			end
 		end
 		if not contains(results, checkState) then
 			local result = checkState:result()
@@ -190,7 +222,7 @@ function copy(stack)
 end
 -- END STACK FUNCTIONS
 
-local goal = 0x780  -- 0xB61  -- dec 2913, 160 RPM
+local goal = 0x800  -- 0xB61  -- dec 2913, 160 RPM
 
 function displayEnd(path, result)
 	for i=1,table.getn(path),1 do
@@ -201,7 +233,7 @@ end
 
 function expand(stack)
 	local current = pop(stack)
-	console.writeline(string.format("current state head %x speed %x counter %d", current.result.head, current.result.speed, current.result.counter))
+	-- console.writeline(string.format("current state head %x speed %x counter %d", current.result.head, current.result.speed, current.result.counter))
 	if current.result.speed >= goal then
 		displayEnd(current.path.s, current.result)
 		-- console.writeline(current.path.s)
@@ -235,6 +267,7 @@ function search()
 			break
 		end
 	end
+	console.writeline("Done")
 end
 
 -- permutations(blend.State:current())
@@ -243,173 +276,104 @@ end
 -- perf1:print()
 -- local perf2 = perf1:advance(true)
 -- perf2:print()
+
+local test = topN(permutations(blend.State:current()), 3)
+for k=1,table.getn(test),1 do
+	displayShort(test[k].perm, test[k].result)
+end
+
 -- search()
 
-
--- GREDDY PATH TESTING
--- Length 15 is a good start.  And only took a second or 2 to run.
--- For 8: 
-	-- head: 420
-	-- speed: 650
-	-- rng: bd92a833
-	-- counter: 113   - correct prediction on ending
-
--- For 18:  0b1'1000
-	-- head: 604
-	-- speed: 6c9
-	-- rng: 56e0b1c9
-	-- counter: 152   - correct prediction on ending (chaining works!)
-
--- For 2f:  0b10'1111
-	-- head: 2c2
-	-- speed: 743
-	-- rng: 7d4ff1eb
-	-- counter: 188   - correct prediction
-
--- For 1: 
-	-- head: 4ab
-	-- speed: 77d
-	-- rng: 2d76e7a
-	-- counter: 223   - correct prediction
-
--- For 3d:  0b11'1101
-	-- head: d8
-	-- speed: 7d8
-	-- rng: 5fdc29c4
-	-- counter: 256   - correct prediction
-
--- For 1e:  0b1'1110
-	-- head: 2be
-	-- speed: 832
-	-- rng: 516aec8c
-	-- counter: 288   - correct prediction
-
--- For c: 
-	-- head: 64b
-	-- speed: 86d
-	-- rng: bc7ff753
-	-- counter: 319   - correct prediction
-
--- For 1f:  0b1'1111
-	-- head: 108
-	-- speed: 8c8
-	-- rng: cab1dd0c
-	-- counter: 348   - correct prediction
-
--- For 1: 
-	-- head: 2d8
-	-- speed: 904
-	-- rng: f079c54a
-	-- counter: 377   - correct prediction (it took a miss!?)
-
--- For 7: 
-	-- head: 7dc
-	-- speed: 91f
-	-- rng: 1cc65c91
-	-- counter: 406   - correct prediction (the in progress miss was tracked correctly!)
-
--- For 3: 
-	-- head: 100
-	-- speed: 95a
-	-- rng: 40b0e1bb
-	-- counter: 433   - correct prediction
-
--- For 1f:  0b1'1111
-	-- head: 3ca
-	-- speed: 9d6
-	-- rng: fa620ce6
-	-- counter: 460   - correct prediction
-
--- For f: 
-	-- head: ff18
-	-- speed: a32
-	-- rng: a621e65c
-	-- counter: 485   - correct prediction
-
--- For 5: 
-	-- head: 1be
-	-- speed: a8d
-	-- rng: 8247a8b9
-	-- counter: 510   - correct prediction
-
--- For d: 
-	-- head: 472
-	-- speed: b09
-	-- rng: 16fc7da2
-	-- counter: 534   - it found a triple perfect, but sadly the blend ends before hitting it.
-	
--- 150.12 RPM.  I get to keep my job for now.  And I probably need to teach it to take the speed
--- at frame 515, not at the result of that cycle.  Okay 
-
 -- DFS TESTING
--- 28
--- 5f
--- 2c   -- PNM ??
--- b    -- HPN ??
--- 6    -- HNN ??  Okay something's gone wrong.
--- b
--- 7
--- f
--- 1
--- 7
--- 0
+-- a
+-- 1f
 -- 1d
+-- 1c
+-- 2b
+-- 24
+-- 2f
+-- e
+-- 1d
+-- c
+-- c
 -- 1f
--- 1f
+-- 2    <-- a couple of sus things here, but it did what it promised
+-- 5        when I tried myself, I couldn't beat it, so there's that
 -- f
 -- For 0: 
-	-- head: cf4c
-	-- speed: b0c
-	-- rng: 99e93f07
-	-- counter: 516
+	-- head: fd3f
+	-- speed: b0d
+	-- rng: e4f74f32
+	-- counter: 515
 
--- current state head 792 speed 5b6 counter 72
--- current state head 420 speed 650 counter 113
--- current state head 7c4 speed 6e9 counter 152
--- current state head 55f speed 763 counter 187  <-- it expects an extra perfect here?
--- current state head b2 speed 7de counter 220
--- 28
--- 5f
--- 2c  <-- corresponding to this step
--- b
+
+-- TESTING SLOW PERMUTATION CODE
+-- For 1bf:   0b1'1011'1111
+	-- head: 49b
+	-- speed: 5f7
+	-- rng: 3c2b79b5
+	-- counter: 71
+-- CORRECT
+
+-- For 1fef:   0b1'1111'1110'1111
+	-- head: 7db
+	-- speed: 5f7
+	-- rng: e5115647
+	-- counter: 71
+-- CORRECT
+
+-- For ef:    0b1110'1111
+	-- head: 3fb
+	-- speed: 5d7
+	-- rng: ef9c842b
+	-- counter: 71
+-- CORRECT
+
+-- For 3ef:   0b11'1110'1111
+	-- head: 65b
+	-- speed: 5b7
+	-- rng: b7f0318e
+	-- counter: 71
+-- CORRECT
+
+-- For ff7:    0b1111'1111'0111
+	-- head: 252
+	-- speed: 5b6
+	-- rng: 515cc7ad
+	-- counter: 72
+-- CORRECT
+
+-- For 3:      0b11   Ayyy, this is the one I used in my 157.  glad to know it was considered 6th best
+	-- head: 792
+	-- speed: 5b6
+	-- rng: c1868b07
+	-- counter: 72
+-- CORRECT
+
+-- For 37:     0b11'0111
+	-- head: 6d2
+	-- speed: 596
+	-- rng: 37f9c099
+	-- counter: 72
+-- CORRECT
+
 -- For 0: 
-	-- head: b2
-	-- speed: 7de
-	-- rng: 17f31272
-	-- counter: 220
+	-- head: 3d2
+	-- speed: 596
+	-- rng: a853dd23
+	-- counter: 72
+-- CORRECT
 
--- For 2c: 
-	-- head: 55f   -- actual: 0x3bf
-	-- speed: 763    -- actual: 0x743
-	-- rng: b688dd1f   -- actual: 0x137963CC
-	-- counter: 187    -- correct
--- This is a double perfect.  Could it have got the wrong shake values?
--- Yes! But not at all in the way I expected!
---   AFTER PERFECT 1:
--- head: 1c7f, speed: 709
--- rng: f90389b9                <---- RNG is correct, so it did the right number of rolls
--- counter: 155, friction: 5
--- shake up 0 left 0            <---- but actual shake values were -3, 0
--- perfect 0 hit 0 miss 0
--- "1": "0"
--- "2": "0"
--- "3": "0"
+-- For 18:    0b1'1000
+	-- head: 3d2
+	-- speed: 596
+	-- rng: 5c83b48b
+	-- counter: 72
+-- CORRECT
 
--- "1": "0"
--- "2": "0"
--- "3": "0"
-
---   AFTER PERFECT 2:
--- head: 2388, speed: 728
--- rng: 45df96b3               <----- And because shake values were wrong above, RNG becomes wrong here
--- counter: 156, friction: 0
--- shake up -1 left 0
--- perfect 0 hit 0 miss 0
--- "1": "0"
--- "2": "0"
--- "3": "0"
-
--- "1": "0"
--- "2": "0"
--- "3": "0"
-
+-- For 3bf:   0b11'1011'1111
+	-- head: 748
+	-- speed: 596
+	-- rng: e9e28d0a
+	-- counter: 73
+-- CORRECT
