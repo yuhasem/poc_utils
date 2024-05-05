@@ -203,18 +203,23 @@ function blend.State:advanceSpeed(slowGain, fastGain)
 	return s
 end
 
+function blend.State:doPerfect()
+	s = self:copy(self)
+	if s.speed >= fastDecision and s.shakeHorz == 0 then
+		s = s:shakeRng("horz")
+	end
+	if s.speed >= fastDecision and s.shakeVert == 0 then
+		s = s:shakeRng("vert")
+	end
+	return s:advanceSpeed(perfectSlowGain, perfectGain):advanceRngForAction() 
+end
+
 -- Returns a State with advanced actions determined on previous frames
 -- (perfect, hit, and misses).
 function blend.State:advanceActions()
 	s = self:copy(self)
 	if s.perfect == 1 then
-		if s.speed >= fastDecision and s.shakeHorz == 0 then
-			s = s:shakeRng("horz")
-		end
-		if s.speed >= fastDecision and s.shakeVert == 0 then
-			s = s:shakeRng("vert")
-		end
-		s = s:advanceSpeed(perfectSlowGain, perfectGain):advanceRngForAction()
+		s = s:doPerfect()
 		s.perfect = 0
 	end
 	if s.hit == 1 then
@@ -351,7 +356,7 @@ function blend.State:playerAction()
 	  return self:advanceSpeed(-missLoss, -missLoss):advanceRngForAction()
 	end
 	if result == PERFECT then
-	  return self:advanceSpeed(perfectSlowGain, perfectGain):advanceRngForAction()
+	  return self:doPerfect()
 	end
 	if result == HIT then
 		return self:advanceSpeed(hitGain, 0):advanceRngForAction()
@@ -368,9 +373,14 @@ function blend.State:advance(withPlayerAction)
 end
 
 -- returns the blend.State that will result if the given blend.State is left to
--- play without user inputs until the blend head reaches the next "top."
+-- play without user inputs until the next frame where user can input without
+-- missing.
 function blend.State:result()
-
+	s = self:copy(self)
+	while not s:playerCanHit() do
+		s = s:advance()
+	end
+	return s
 end
 
 return blend
