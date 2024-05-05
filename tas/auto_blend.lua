@@ -222,7 +222,9 @@ function copy(stack)
 end
 -- END STACK FUNCTIONS
 
-local goal = 0x800  -- 0xB61  -- dec 2913, 160 RPM
+local GOAL = 0xB61  -- dec 2913, 160 RPM
+-- How many top permutations to keep on each iteration
+local WIDTH = 3
 
 function displayEnd(path, result)
 	for i=1,table.getn(path),1 do
@@ -231,10 +233,44 @@ function displayEnd(path, result)
 	displayShort(0, result)
 end
 
+-- constants for maximum calc
+local fastDecision=0x5DB  -- dec 1499
+local perfectSlowGain=0x60
+local perfectGain=0x20
+local friction=0x01
+
+-- Returns the maximum RPM acheivable if all results are perfect
+-- until the end of the blend
+-- TODO: this should probably be in blend, despite not actually using
+-- blend.State, because it will be used by both display and auto.
+function maximum(state)
+  local counter = state.counter
+  local speed = state.speed
+  local head = state.head
+  while (counter < 515) do
+		counter = counter + 1
+		local newHead = head + speed
+		for i=0x2000,0xFFFF,0x4000 do
+			if (head < i and newHead > i) then
+				if (speed < fastDecision) then
+					speed = speed + perfectSlowGain
+				else
+					speed = speed + perfectGain
+				end
+			end
+		end
+		head = bit.band(newHead, 0xFFFF)
+		if (counter % 6 == 0) then
+			speed = speed - friction
+		end
+  end
+  return speed
+end
+
 function expand(stack)
 	local current = pop(stack)
 	-- console.writeline(string.format("current state head %x speed %x counter %d", current.result.head, current.result.speed, current.result.counter))
-	if current.result.speed >= goal then
+	if current.result.speed >= GOAL then
 		displayEnd(current.path.s, current.result)
 		-- console.writeline(current.path.s)
 		return true
@@ -242,10 +278,11 @@ function expand(stack)
 	if current.result.counter >= 515 then
 		return false
 	end
-	-- TODO: state culling if we know we can't get to the goal from this
-	-- position.
+	if maximum(current.result) < GOAL then
+		return false
+	end
 
-	local nexts = topN(permutations(current.result), 3)
+	local nexts = topN(permutations(current.result), WIDTH)
 	-- push next states in reverse order, so that the best results are tried
 	-- first.
 	for i=table.getn(nexts),1,-1 do
@@ -277,103 +314,36 @@ end
 -- local perf2 = perf1:advance(true)
 -- perf2:print()
 
-local test = topN(permutations(blend.State:current()), 3)
-for k=1,table.getn(test),1 do
-	displayShort(test[k].perm, test[k].result)
-end
+-- local test = topN(permutations(blend.State:current()), 3)
+-- for k=1,table.getn(test),1 do
+	-- displayShort(test[k].perm, test[k].result)
+-- end
 
--- search()
+search()
 
 -- DFS TESTING
--- a
--- 1f
--- 1d
--- 1c
--- 2b
--- 24
--- 2f
--- e
--- 1d
--- c
--- c
--- 1f
--- 2    <-- a couple of sus things here, but it did what it promised
--- 5        when I tried myself, I couldn't beat it, so there's that
+-- I just took the maximum first state to keep things reasonably efficient
+-- but holy shit did it actually do it!?
+-- 7b
+-- 7f
+-- 39
 -- f
+-- 19
+-- 8
+-- 18
+-- 8
+-- 7
+-- f
+-- c
+-- f
+-- 4
+-- c
+-- 3
 -- For 0: 
-	-- head: fd3f
-	-- speed: b0d
-	-- rng: e4f74f32
-	-- counter: 515
-
-
--- TESTING SLOW PERMUTATION CODE
--- For 1bf:   0b1'1011'1111
-	-- head: 49b
-	-- speed: 5f7
-	-- rng: 3c2b79b5
-	-- counter: 71
--- CORRECT
-
--- For 1fef:   0b1'1111'1110'1111
-	-- head: 7db
-	-- speed: 5f7
-	-- rng: e5115647
-	-- counter: 71
--- CORRECT
-
--- For ef:    0b1110'1111
-	-- head: 3fb
-	-- speed: 5d7
-	-- rng: ef9c842b
-	-- counter: 71
--- CORRECT
-
--- For 3ef:   0b11'1110'1111
-	-- head: 65b
-	-- speed: 5b7
-	-- rng: b7f0318e
-	-- counter: 71
--- CORRECT
-
--- For ff7:    0b1111'1111'0111
-	-- head: 252
-	-- speed: 5b6
-	-- rng: 515cc7ad
-	-- counter: 72
--- CORRECT
-
--- For 3:      0b11   Ayyy, this is the one I used in my 157.  glad to know it was considered 6th best
-	-- head: 792
-	-- speed: 5b6
-	-- rng: c1868b07
-	-- counter: 72
--- CORRECT
-
--- For 37:     0b11'0111
-	-- head: 6d2
-	-- speed: 596
-	-- rng: 37f9c099
-	-- counter: 72
--- CORRECT
-
--- For 0: 
-	-- head: 3d2
-	-- speed: 596
-	-- rng: a853dd23
-	-- counter: 72
--- CORRECT
-
--- For 18:    0b1'1000
-	-- head: 3d2
-	-- speed: 596
-	-- rng: 5c83b48b
-	-- counter: 72
--- CORRECT
-
--- For 3bf:   0b11'1011'1111
-	-- head: 748
-	-- speed: 596
-	-- rng: e9e28d0a
-	-- counter: 73
--- CORRECT
+	-- head: ac0c
+	-- speed: b6c
+	-- rng: 35650cc6
+	-- counter: 516   -- OFF BY ERROR GAHHHHHHHHHHHHHHHHHHHHH.  If the counter actually
+-- could reach 516, lassie's perfect would have happened and b6c would happen.  But
+-- unfortunately it gets registered and never executed because the blend ends.  So let's
+-- fix that up and start trying again.
