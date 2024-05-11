@@ -1552,3 +1552,80 @@ More experimentation!
 It does not cycle regularly.  It modifes the Comparator part of the FID deterministically based on date, but then just re-sorts them, such that the FID0 is not guaranteed to change, and sometimes the other FIDs swap.  The comparator changes seem fairly stable around date, like it's just some simple addition happening here (and mostly to the lower bits with the upper bits remaining unchanged).
 
 I'd also like to close on what happens to the FIDs when you change Trendy Phrase.
+
+
+## Emerald
+
+RNG advance function 0x0806F5CC
+
+RNG calls on candidate frame:
+- 0x0811EE3A
+- 0x081224E8
+- 0x0811EE3A
+- 0x08122520
+- 0x08122B28
+- 0x08122B7A
+- 0x08122B9A
+- 0x0811EE3A
+- 0x081224E8
+- 0x0811EE3A
+- 0x08122520
+- 0x08122B28
+- 0x08122B3E
+- 0x08122B54
+- 0x08122B7A
+- 0x08122B9A
+- 0x0811EE3A
+- 0x081224E8
+- 0x0811EE3A
+- 0x08122520
+- 0x08122B28
+- 0x08122B3E
+- 0x08122B7A
+- 0x08122B9A
+- 0x0811EE3A
+- 0x081224E8
+- 0x0811EE3A
+- 0x08122520
+- 0x08122B28
+- 0x08122B7A
+- 0x08122B9A
+- 0x0811EE3A
+- 0x081224E8
+- 0x0811EE3A
+- 0x08122520
+- 0x08122B28
+- 0x08122B7A
+- 0x08122B9A
+- 0x08177556
+- 0x08177560
+- 0x0818E618
+- 0x0819FBD6
+
+So the pattern is \[with prediction on what it's doing]
+- 0x0811EE3A  \[pick random word from list]
+- 0x081224E8  \[pick list 50/50]
+- 0x0811EE3A  \[pick random word from list]
+- 0x08122520  \[comp 1 bit]
+- 0x08122B28  \[comp upper 1]
+- 0x08122B3E (optional)  \[comp upper 2]
+- 0x08122B54 (optional)  \[comp upper 3]
+- 0x08122B7A  \[comp lower]
+- 0x08122B9A  \[FID]
+
+Let's verify that the numbers are the same, and then that would be perfect for reverse fid.
+
+Deciding word from list (0x0811EE38):  Same for my purpose.  There's a slight difference in that the index is multipled by 8 and then offset by 4.  There must be extra data in these lists which means it needs to be indexed like this.
+
+Choosing list (around 0x081224EC): Same for my purpose.  0xC and 0xD values unchanged per RNG being even or odd.  More duplicated code in Emerald than R/S for no reason?
+
+Comparator single bit: exactly the same.
+
+Comp upper 7 (around 0x08122B28): Exactly the same.
+
+Comp lower 7 (around 0x08122B7E): Exactly the same.
+
+FID (around 0x08122B9E): Exactly the same.
+
+So reverse fid just needs to take account for the new TID -> FID timing.
+
