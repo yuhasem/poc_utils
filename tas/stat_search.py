@@ -8,7 +8,7 @@ Be wary of lag frames.
 """
 
 MAX_PRINTS = 50
-MAX_SEARCHES = 10000
+MAX_SEARCHES = 2000
 
 import rng
 
@@ -69,9 +69,21 @@ def MoonStone(lunatone, **kwargs):
         
 
 def main():
+    seed = 0xe5c6ac1c
+    for i in range(MAX_SEARCHES):
+        tryseed = rng.advanceRng(seed, i)
+        if rng.top(tryseed) % 2880 >= 320:
+            continue
+        tryseed = rng.advanceRng(tryseed, 1)
+        rand = rng.top(tryseed) % 100
+        if (rand < 40 and rand >= 20) or (rand < 80 and rand >= 60) or (rand < 90 and rand >= 85):
+            poke = rng.WildPokemon(rng.advanceRng(tryseed, 2))
+            if (poke.advances > 100):
+                print("offset", i, "advances", poke.advances)
+        
     # Finding a chad zigzagoon for 6 pickup uptime slots
     # seed = 0x1709c8ca
-    seed = 0xA6FECC9
+    # seed = 0xA6FECC9
     # FindWildPokemon(seed, 320, 94, 98, [ZigChadNature, ZigChadAttack, ZigChadSpeed])
     # print("Geodude")
     # FindWildPokemon(seed, 2880, 99, 100, [GeoDudeNature, GeoDudeAttack])
@@ -79,7 +91,7 @@ def main():
     # FindWildPokemon(seed, 160, 99, 100, [GeoDudeNature2, GeoDudeAttack2])
     # print("Aron")
     # FindWildPokemon(seed, 160, 60, 70, [GeoDudeNature, AronAttack, AronAbility])
-    FindWildPokemon(seed, 160, 70, 89, [MoonStone])
+    # FindWildPokemon(seed, 160, 70, 89, [MoonStone])
 
 if __name__ == '__main__':
     main()

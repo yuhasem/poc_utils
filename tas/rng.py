@@ -154,7 +154,7 @@ class WallyRaltsPokemon(Pokemon):
         
 class WildPokemon(Pokemon):
     
-    def __init__(self, seed, method2: bool = False):
+    def __init__(self, seed, method2: bool = False, method3: bool = False):
         # The first step is one to check for Synchronize, which we don't track.
         self.advances = 2
         self.nature = top(seed) % 25
@@ -168,6 +168,9 @@ class WildPokemon(Pokemon):
             self.pid += top(seed) << 16
             tentative_nature = self.pid % 25
             self.advances += 2
+        
+        if method3:
+            seed = advanceRng(seed, 1)
         
         seed = advanceRng(seed, 1)
         ivs = top(seed)
@@ -247,3 +250,57 @@ def rareCandies(seed, size=6):
       if (item >= 50 and item < 60):
           candies += 1
     return candies
+
+
+# Doesn't look quite right, it can generate
+# a Plusle without a encounter slot for it
+# nearby
+def staticInvestigate(seed):
+    # Advance one for VBlank
+    seed = advanceRng(seed, 1)
+    # Advance until encounter is generated
+    seed = advanceRng(seed, 1)
+    i = 0
+    while top(seed) % 2880 >= 320:
+        i += 1
+        seed = advanceRng(seed, 1)
+    print("encounter with delay", i)
+    # Advance 1 for next value, this should be static check?
+    seed = advanceRng(seed, 1)
+    print("%x" % seed)
+    print(top(seed)%2)
+    # It looks like that number being even
+    # is when static procs
+    if top(seed) % 2 == 1:
+        seed = advanceRng(seed, 1)
+        print("predicted slot from", top(seed)%100)
+        return
+    # One of these is doing the determination
+    # but I don't know which one
+    seed = advanceRng(seed, 1)
+    print('%x' % seed)
+    print(top(seed) % 6)
+    seed = advanceRng(seed, 1)
+    print('%x' % seed)
+    print(top(seed) % 6)
+    seed = advanceRng(seed, 1)
+    print('%x' % seed)
+    print(top(seed) % 6)
+    p = WildPokemon(seed, method3=True)
+    print('predicted poke:', p)
+        
+def route110electric(seed):
+    slot = top(seed) % 100
+    if slot >= 20 and slot < 40:
+        return 'elec 12'
+    if slot >= 50 and slot < 60:
+        return 'elec 13'
+    if slot >= 60 and slot < 70:
+        return 'minun 13'
+    if slot >= 80 and slot < 85:
+        return 'minun 13 (5%)'
+    if slot == 98:
+        return 'plusle 12'
+    if slot == 99:
+        return 'plusle 13'
+    return ''

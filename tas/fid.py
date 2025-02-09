@@ -40,9 +40,9 @@ def getTrendyWord(seed, index):
     "The half-word which describes a word to put in the trendy phrase."
     max_num = MAX_NUMBERS[index]
     seed = rng.advanceRng(seed, 1)
-    print("trendy word with list %s and seed %x" % (index, seed))
+    # print("trendy word with list %s and seed %x" % (index, seed))
     value = rng.top(seed) % max_num
-    print("index %s" % value)
+    # print("index %s" % value)
     index = (index & 0x7F) << 9
     result = value & 0x1FF
     return (seed, index | result)
@@ -55,28 +55,28 @@ def getComparator(seed, injectVblank):
     functionality."""
     # I have no idea why this individual bit needs it's own RNG call.
     seed = rng.advanceRng(seed, 1)
-    halfword = 0 if rng.top(seed) & 1 == 0 else 0x40
-    print("starting comparator %s" % halfword)
+    halfword = 0 if rng.top(seed) & 1 == 0 else 0x4000
+    # print("starting comparator %s" % halfword)
     
     if injectVblank == 4:
         seed = rng.advanceRng(seed, 1)
     # This is how is makes a variable number of RNG calls.
     seed = rng.advanceRng(seed, 1)
-    print("%x" % seed)
+    # print("%x" % seed)
     if rng.top(seed) % 0x62 > 0x32:
-        print("continue")
+        # print("continue")
         if injectVblank == 5:
             seed = rng.advanceRng(seed, 1)
         seed = rng.advanceRng(seed, 1)
-        print("%x" % seed)
+        # print("%x" % seed)
         if rng.top(seed) % 0x62 > 0x50:
-            print("continue")
+            # print("continue")
             if injectVblank == 6:
                 seed = rng.advanceRng(seed, 1)
             seed = rng.advanceRng(seed, 1)
-            print("%x" % seed)
+            # print("%x" % seed)
     rand = rng.top(seed) % 0x62
-    print("final rand %x" % rand)
+    # print("final rand %x" % rand)
     top7 = rand + 0x1E
     # The game also does a & 0x7F here, but we're guaranteed not to lose
     # information even without it.
@@ -90,7 +90,7 @@ def getComparator(seed, injectVblank):
     # random number between 0 and a random number.
     bottom7 = rng.top(seed) % (rand + 1)
     bottom7 += 0x1E
-    print("bottom rand %x" % bottom7)
+    # print("bottom rand %x" % bottom7)
     # Again the game does a & 07F, but again we don't lose information.
     halfword |= bottom7
     # bit 6 is now the random number from the top or'ed with this new random
@@ -113,9 +113,9 @@ def generateCandidateFID(seed, injectVblank=-1):
     if injectVblank == 1:
         seed = rng.advanceRng(seed, 1)
     seed = rng.advanceRng(seed, 1)
-    print("%x" % rng.top(seed))
+    # print("%x" % rng.top(seed))
     nextIndex = 0xD if rng.top(seed) & 1 == 0 else 0xC
-    print("picked random list %s" % nextIndex)
+    # print("picked random list %s" % nextIndex)
     
     if injectVblank == 2:
         seed = rng.advanceRng(seed, 1)

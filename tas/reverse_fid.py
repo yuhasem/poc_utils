@@ -185,6 +185,13 @@ def main():
 
 if __name__ == '__main__':
     # main()
-    rand = (45003 << 16) + 42589
+    # seed = 27171
+    # seed = rng.advanceRng(seed, 1)
+    # count = 0
+    # while rng.top(seed) != 33452:
+    #     count += 1
+    #     seed = rng.advanceRng(seed, 1)
+    # print(count, seed)
+    rand = 2192366299
     for candidates, cSeed in searchAt(rand):
         print(candidates)
