@@ -18,8 +18,9 @@
 --select pokemon
 --frame 9192 delay 9264    (frame 6 delay is 0)    9265    9267-9270 is determine 9270
 
+dofile("rng.lua")
+
 local defi
-local rng=0x3004818
 local i,j
 local last=0
 local cur
@@ -33,54 +34,7 @@ local fillColor
 local randvalue
 --local iter
 
-local bnd,br,bxr=bit.band,bit.bor,bit.bxor
-
-local multspa={
- 0x41C64E6D, 0xC2A29A69, 0xEE067F11, 0xCFDDDF21,
- 0x5F748241, 0x8B2E1481, 0x76006901, 0x1711D201,
- 0xBE67A401, 0xDDDF4801, 0x3FFE9001, 0x90FD2001,
- 0x65FA4001, 0xDBF48001, 0xF7E90001, 0xEFD20001,
- 0xDFA40001, 0xBF480001, 0x7E900001, 0xFD200001,
- 0xFA400001, 0xF4800001, 0xE9000001, 0xD2000001,
- 0xA4000001, 0x48000001, 0x90000001, 0x20000001,
- 0x40000001, 0x80000001, 0x00000001, 0x00000001}
- 
-local multspb={
- 0x00006073, 0xE97E7B6A, 0x31B0DDE4, 0x67DBB608,
- 0xCBA72510, 0x1D29AE20, 0xBA84EC40, 0x79F01880,
- 0x08793100, 0x6B566200, 0x803CC400, 0xA6B98800,
- 0xE6731000, 0x30E62000, 0xF1CC4000, 0x23988000,
- 0x47310000, 0x8E620000, 0x1CC40000, 0x39880000,
- 0x73100000, 0xE6200000, 0xCC400000, 0x98800000,
- 0x31000000, 0x62000000, 0xC4000000, 0x88000000,
- 0x10000000, 0x20000000, 0x40000000, 0x80000000}
-
 local memoryDomain = "System Bus";
- 
-
---a 32-bit, b bit position, 0 is least significant bit
-function getbit(a,b)
- local c=bit.rshift(a,b)
- c=bnd(c,1)
- return c
-end
-
---does 32-bit multiplication
-function mult32(a,b)
- local c=bnd(a,0xFFFF0000)/0x10000
- local d=bnd(a,0x0000FFFF)
- local e=bnd(b,0xFFFF0000)/0x10000
- local f=bnd(b,0x0000FFFF)
- local g=bnd(c*f+d*e,0xFFFF)
- local h=d*f
- local i=g*0x10000+h
- return i
-
-end
-
-function gettop(a)
- return(bit.rshift(a,16))
-end
 
 -- draws a 3x3 square
 function drawsquare(a,b,lineColor,fillColor)
@@ -90,39 +44,21 @@ end
 
 while true do
 
- i=0
- cur=memory.read_u32_le(rng, memoryDomain)
- test=last
- while cur~=test and i<=100 do
-  test = bnd(mult32(test, 0x41C64E6D) + 0x6073, 0xFFFFFFFF)
-  i=i+1
- end
+ cur=rng.current()
+ distance=rng.index(cur) - rng.index(last)
  gui.text(120,24,string.format("Last RNG value: %x", last))
  last=cur
  gui.text(120,0,string.format("Current RNG value: %x", cur))
- if i<=100 then
-  gui.text(120,12,"RNG distance since last: "..i)
- else
-  gui.text(120,12,"RNG distance since last: >100")
- end
+ gui.text(120,12,"RNG distance since last: "..distance)
+
  
- if i>2 and i<=100 then
+ if distance>2 and distance<=100 then
   gui.text(2,12,"***\n***\n***")
  end
  
  
  --indexing, a mathematical work
- indexfind=startvalue
- index=0
- for j=0,31,1 do
-  if getbit(cur,j)~=getbit(indexfind,j) then
-   indexfind=mult32(indexfind,multspa[j+1])+multspb[j+1]
-   index=index+bit.lshift(1,j)
-   if j==31 then
-    index=index+0x100000000
-   end
-  end
- end
+ index = rng.index(cur)
  gui.text(120,36,index)
  
  
@@ -139,7 +75,7 @@ while true do
 	  -- A light gray for values we can get
     clr=0xFFC0C0C0
    end
-   randvalue=gettop(test)
+   randvalue=rng.top(test)
 
 	 if randvalue%10 == 0 then
 	   -- If a Pickup would be generated on this frame, color the box black
@@ -182,7 +118,7 @@ while true do
 
    drawsquare(2+4*j,44+4*i, clr, fillColor)
 
-   test=mult32(test,0x41C64E6D) + 0x6073
+   test=rng.advance(test, 1)
   end
  end
  

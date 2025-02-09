@@ -18,7 +18,7 @@ while true do
 	local tid3 = memory.read_u16_le(save-0xFA2, memoryDomain)
 	gui.text(200, 66, "tid? "..tid3)
 	local sid = memory.read_u16_le(save-0xFA0, memoryDomain)
-	gui.text(200, 66, "sid "..sid)
+	gui.text(200, 82, "sid "..sid)
 	
 	local r = memory.read_u32_le(rngPtr, memoryDomain)
 	gui.text(390, 20, string.format("current rng: %x", r))

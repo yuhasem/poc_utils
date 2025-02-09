@@ -25,18 +25,18 @@ local adds={
  
 --does 32-bit multiplication
 local function mult32(a,b)
-	local c=bit.band(a,0xFFFF0000)/0x10000
-	local d=bit.band(a,0x0000FFFF)
-	local e=bit.band(b,0xFFFF0000)/0x10000
-	local f=bit.band(b,0x0000FFFF)
-	local g=bit.band(c*f+d*e,0xFFFF)
+	local c=(a & 0xFFFF0000)/0x10000
+	local d=(a & 0x0000FFFF)
+	local e=(b & 0xFFFF0000)/0x10000
+	local f=(b & 0x0000FFFF)
+	local g=((c*f+d*e) & 0xFFFF)
 	local h=d*f
 	local i=g*0x10000+h
 	return i
 end
 
 function rng.top(a)
-	return(bit.rshift(a,16))
+	return a >> 16
 end
 
 function rng.current()
@@ -46,7 +46,7 @@ end
 function rng.advance(val, steps)
 	for i=1,32,1 do
 		if bit.check(steps,i-1) then
-			val = bit.band(mult32(val, mults[i]) + adds[i], 0xFFFFFFFF)
+			val = (mult32(val, mults[i]) + adds[i]) & 0xFFFFFFFF
 		end
 	end
 	return val
@@ -57,8 +57,8 @@ function rng.index(val)
 	local indexFind = 0
 	for i=1,32,1 do
 		if bit.check(val, i-1) ~= bit.check(indexFind, i-1) then
-			indexFind = bit.band(mult32(indexFind, mults[i]) + adds[i], 0xFFFFFFFF)
-			index = index + bit.lshift(1, i-1)
+			indexFind = (mult32(indexFind, mults[i]) + adds[i]) & 0xFFFFFFFF
+			index = index + (1 << i-1)
 		end
 	end
 	return index

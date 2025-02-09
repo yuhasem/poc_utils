@@ -19,7 +19,10 @@
 --frame 9192 delay 9264    (frame 6 delay is 0)    9265    9267-9270 is determine 9270
 
 local defi
-local rng=0x3004818
+-- R/S:
+-- local rng=0x3004818
+-- E:
+local rng=0x03005D80
 local i,j
 local last=0
 local cur
@@ -32,8 +35,6 @@ local clr
 local fillColor
 local randvalue
 --local iter
-
-local bnd,br,bxr=bit.band,bit.bor,bit.bxor
 
 local multspa={
  0x41C64E6D, 0xC2A29A69, 0xEE067F11, 0xCFDDDF21,
@@ -64,18 +65,18 @@ local surf = false
 
 --a 32-bit, b bit position, 0 is least significant bit
 function getbit(a,b)
- local c=bit.rshift(a,b)
- c=bnd(c,1)
+ local c=(a >> b)
+ c=(c & 1)
  return c
 end
 
 --does 32-bit multiplication
 function mult32(a,b)
- local c=bnd(a,0xFFFF0000)/0x10000
- local d=bnd(a,0x0000FFFF)
- local e=bnd(b,0xFFFF0000)/0x10000
- local f=bnd(b,0x0000FFFF)
- local g=bnd(c*f+d*e,0xFFFF)
+ local c=(a & 0xFFFF0000)/0x10000
+ local d=(a & 0x0000FFFF)
+ local e=(b & 0xFFFF0000)/0x10000
+ local f=(b & 0x0000FFFF)
+ local g=((c*f+d*e) & 0xFFFF)
  local h=d*f
  local i=g*0x10000+h
  return i
@@ -83,7 +84,7 @@ function mult32(a,b)
 end
 
 function gettop(a)
- return(bit.rshift(a,16))
+ return a >> 16
 end
 
 -- draws a 3x3 square
@@ -98,7 +99,7 @@ while true do
  cur=memory.read_u32_le(rng, memoryDomain)
  test=last
  while cur~=test and i<=100 do
-  test = bnd(mult32(test, 0x41C64E6D) + 0x6073, 0xFFFFFFFF)
+  test = (mult32(test, 0x41C64E6D) + 0x6073) & 0xFFFFFFFF
   i=i+1
  end
  gui.text(120,24,string.format("Last RNG value: %x", last))
@@ -121,7 +122,7 @@ while true do
  for j=0,31,1 do
   if getbit(cur,j)~=getbit(indexfind,j) then
    indexfind=mult32(indexfind,multspa[j+1])+multspb[j+1]
-   index=index+bit.lshift(1,j)
+   index=index+(1 << j)
    if j==31 then
     index=index+0x100000000
    end
@@ -193,7 +194,7 @@ while true do
 
    drawsquare(2+4*j,44+4*i, clr, fillColor)
 
-   test=mult32(test,0x41C64E6D) + 0x6073
+   test=(mult32(test,0x41C64E6D) + 0x6073) & 0xFFFFFFFF
   end
  end
  
